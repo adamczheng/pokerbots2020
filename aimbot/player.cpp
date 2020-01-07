@@ -60,7 +60,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     //int street = round_state->street;  // 0, 3, 4, or 5 representing pre-flop, flop, river, or turn respectively
     //std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
     //std::array<std::string, 5> board_cards = round_state->deck;  // the board cards
-    //int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
+    int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
     //int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     //int my_stack = round_state->stacks[active];  // the number of chips you have remaining
     //int opp_stack = round_state->stacks[1-active];  // the number of chips your opponent has remaining
