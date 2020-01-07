@@ -69,7 +69,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     //int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     //int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
     //cout << (game_state->round_num) << ' ' << (game_state->bankroll) << ' ' << (game_state->game_clock) << endl;
-    if ((NUM_ROUNDS - game_state->round_num + 1)*3 < game_state->bankroll) {
+    if (((NUM_ROUNDS - game_state->round_num + 1)*3 + 1) / 2 < game_state->bankroll) {
         return FoldAction();
     }
     if (RAISE_ACTION_TYPE & legal_actions)
