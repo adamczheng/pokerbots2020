@@ -15,6 +15,7 @@ bool on_check_fold;
 bool play_passive;
 int pair_cnt;
 int suited_cnt;
+int jam_street;
 /**
  * Called when a new round starts. Called NUM_ROUNDS times.
  *
@@ -33,6 +34,7 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
     play_passive = false;
     pair_cnt = 0;
     suited_cnt = 0;
+    jam_street = 100;
     int street = round_state->street;
     assert(street == 0);
     std::array<std::string, 2> my_cards = round_state->hands[active];
@@ -64,7 +66,11 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
  */
 void Player::handle_round_over(GameState* game_state, TerminalState* terminal_state, int active)
 {
-    //int my_delta = terminal_state->deltas[active];  // your bankroll change from this round
+    int my_delta = terminal_state->deltas[active];  // your bankroll change from this round
+    if (my_delta < -100) {
+        cout << "Lost " << my_delta << " on hand #" << (game_state->round_num) << " with " << "TODO" << '\n';
+        cout << "jam street: " << jam_street << '\n';
+    }
     //game_state = new GameState(game_state->bankroll + my_delta, game_state->game_clock, game_state->round_num + 1, )->bankroll += my_delta;
     //RoundState* previous_state = (RoundState*) terminal_state->previous_state;  // RoundState before payoffs
     //int street = previous_state->street;  // 0, 3, 4, or 5 representing when this round ended
@@ -123,7 +129,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
     int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     //int my_stack = round_state->stacks[active];  // the number of chips you have remaining
-    //int opp_stack = round_state->stacks[1-active];  // the number of chips your opponent has remaining
+    int opp_stack = round_state->stacks[1-active];  // the number of chips your opponent has remaining
     int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
     //int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     //int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
@@ -159,19 +165,28 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         }
         if (street > 0 && pair_cnt == 0) {
             if (suited_cnt == 4 && street < 5) {
+                if (opp_stack == 0) {
+                    if (jam_street == 100) jam_street = street;
+                }
                 return check_call(game_state, round_state, active);
             }
             if (suited_cnt >= 5) {
+                if (jam_street == 100) jam_street = street;
                 return jam(game_state, round_state, active);
             }
             return check_fold(game_state, round_state, active);
         }
         if (pair_cnt > 1 || suited_cnt >= 5) {
+            if (jam_street == 100) jam_street = street;
             return jam(game_state, round_state, active);
         }
         if (pair_cnt == 1) {
+            if (opp_stack == 0) {
+                if (jam_street == 100) jam_street = street;
+            }
             return check_call(game_state, round_state, active);
         }
     }
+    if (jam_street == 100) jam_street = street;
     return jam(game_state, round_state, active);
 }
