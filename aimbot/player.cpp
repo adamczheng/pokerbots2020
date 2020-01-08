@@ -14,6 +14,7 @@ Player::Player()
 bool on_check_fold;
 bool play_passive;
 int pair_cnt;
+int suited_cnt;
 /**
  * Called when a new round starts. Called NUM_ROUNDS times.
  *
@@ -31,6 +32,7 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
     on_check_fold = false;
     play_passive = false;
     pair_cnt = 0;
+    suited_cnt = 0;
     int street = round_state->street;
     assert(street == 0);
     std::array<std::string, 2> my_cards = round_state->hands[active];
@@ -133,10 +135,19 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         return check_fold(game_state, round_state, active);
     }
     pair_cnt = 0;
+    
+    suited_cnt = 0;
+    map<char, int> suit_cnts;
+    suit_cnts[my_cards[0][1]]++;
+    suit_cnts[my_cards[1][1]]++;
     for (int i = 0; i < street; i++) {
         if (my_cards[0][0] == board_cards[i][0] || my_cards[1][0] == board_cards[i][0]) {
             pair_cnt++;
         }
+        suit_cnts[board_cards[i][1]]++;
+    }
+    for (auto it : suit_cnts) {
+        suited_cnt = max(suited_cnt, it.second);
     }
     if (play_passive) {
         if (street == 0) {
@@ -147,9 +158,15 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
             }
         }
         if (street > 0 && pair_cnt == 0) {
+            if (suited_cnt == 4 && street < 5) {
+                return check_call(game_state, round_state, active);
+            }
+            if (suited_cnt >= 5) {
+                return jam(game_state, round_state, active);
+            }
             return check_fold(game_state, round_state, active);
         }
-        if (pair_cnt > 1) {
+        if (pair_cnt > 1 || suited_cnt >= 5) {
             return jam(game_state, round_state, active);
         }
         if (pair_cnt == 1) {
