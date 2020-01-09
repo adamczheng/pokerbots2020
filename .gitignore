@@ -1,4 +1,6 @@
-*.txt
+A.txt
+B.txt
+gamelog.txt
 __pycache__
 *.zip
 */cppbot
