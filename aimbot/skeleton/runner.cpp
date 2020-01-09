@@ -2,6 +2,8 @@
  * The infrastructure for interacting with the engine.
  */
 #include "runner.hpp"
+#include <bits/stdc++.h>
+
 
 Runner::Runner(Bot* pokerbot, tcp::iostream* stream)
 {
@@ -235,6 +237,9 @@ void run_bot(Bot* pokerbot, vector<string> args)
 {
     string host = args[0];
     string port = args[1];
+    auto TIME = clock();
+    while (1.0*(clock() - TIME)/CLOCKS_PER_SEC < .1) {
+    }
     // connect to the engine
     tcp::iostream stream;
     stream.connect(host, port);
