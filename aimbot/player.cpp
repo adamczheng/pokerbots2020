@@ -50,6 +50,8 @@ int suited_cnt;
 int opp_3b_size;
 int cnt_4b_value;
 int opp_4b_size;
+int spw,spl,bpw,bpl,cp;
+int small_pots_won, small_pots_lost, big_pots_won, big_pots_lost, chopped_pots;
 
 struct Card {
 	int rank, suit;
@@ -130,19 +132,52 @@ void Player::handle_round_over(GameState* game_state, TerminalState* terminal_st
         my_hand.push_back(board_cards[i]);
         opp_hand.push_back(board_cards[i]);
     }
-    if (my_delta < -50) {
-        cout << "Lost " << my_delta << " on hand #" << (game_state->round_num) << 
-         " on street " << street << " with " << hand_type_convert[hand_type(my_hand)] << " vs " << hand_type_convert[hand_type(opp_hand)] << '\n';
-    }
-    if (my_delta > 50) {
-        cout << "Won " << my_delta << " on hand #" << (game_state->round_num) << 
-         " on street " << street << " with " << hand_type_convert[hand_type(my_hand)] << " vs " << hand_type_convert[hand_type(opp_hand)] << '\n';
+    if (game_state->round_num <= 500) {
+        if (my_delta < -50) {
+            cout << my_delta << ", round #" << (game_state->round_num) << 
+            ", street " << street << ", " << hand_type_convert[hand_type(my_hand)] << " vs " << hand_type_convert[hand_type(opp_hand)] << '\n';
+            big_pots_lost++;
+            bpl++;
+        } else if (my_delta > 50) {
+            cout << my_delta << ", hand #" << (game_state->round_num) << 
+            ", street: " << street << ", " << hand_type_convert[hand_type(my_hand)] << " vs " << hand_type_convert[hand_type(opp_hand)] << '\n';
+            big_pots_won++;
+            bpw++;
+        } else if (my_delta == 0) {
+            chopped_pots++;
+            cp++;
+        } else if (my_delta > 0) {
+            small_pots_won++;
+            spw++;
+        } else {
+            small_pots_lost++;
+            spl++;
+        }
+    } else {
+        if (my_delta < -50) {
+            cout << my_delta << ", round #" << (game_state->round_num) << 
+             ", street " << street << ", " << hand_type_convert[hand_type(my_hand)] << " vs " << hand_type_convert[hand_type(opp_hand)] << '\n';
+            big_pots_lost++;
+        } else if (my_delta > 50) {
+            cout << my_delta << ", hand #" << (game_state->round_num) << 
+            ", street: " << street << ", " << hand_type_convert[hand_type(my_hand)] << " vs " << hand_type_convert[hand_type(opp_hand)] << '\n';
+            big_pots_won++;
+        } else if (my_delta == 0) {
+            chopped_pots++;
+        } else if (my_delta > 0) {
+            small_pots_won++;
+        } else {
+            small_pots_lost++;
+        }
     }
     if (street == 0 && !on_check_fold) {
        preflop_delta += my_delta;
     }
     if (game_state->round_num == 1000) {
         cout << "pf delta: " << preflop_delta << endl;
+        cout << "spw/spl/bpw/bpl/cp: " << small_pots_won << ' ' << small_pots_lost << ' ' << big_pots_won << ' ' << big_pots_lost << ' ' << chopped_pots << endl;
+        cout << "first half:         " << spw << ' ' << spl << ' ' << bpw << ' ' << bpl << ' ' << cp << endl;
+        cout << "second half:        " << small_pots_won - spw << ' ' << small_pots_lost - spl << ' ' << big_pots_won - bpw << ' ' << big_pots_lost - bpl << ' ' << chopped_pots - cp << endl;
     }
 }
 
@@ -277,19 +312,19 @@ Action preflop_BTN(GameState* game_state, RoundState* round_state, int active) {
     assert(!big_blind);
     int legal_actions = round_state->legal_actions();
     std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
-    int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
-    int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
+    //int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
+    //int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     int my_stack = round_state->stacks[active];  // the number of chips you have remaining
     int opp_stack = round_state->stacks[1-active];  // the number of chips your opponent has remaining
-    int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
+    //int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
     int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
 
-    bool are_suited = (my_cards[0][1] == my_cards[1][1]);
-    bool is_pocket_pair = (my_cards[0][0] == my_cards[1][0]);
-    int a = rank_map[my_cards[0][0]];
-    int b = rank_map[my_cards[1][0]];
-    if (a < b) swap(a, b);
+    //bool are_suited = (my_cards[0][1] == my_cards[1][1]);
+    //bool is_pocket_pair = (my_cards[0][0] == my_cards[1][0]);
+    //int a = rank_map[my_cards[0][0]];
+    //int b = rank_map[my_cards[1][0]];
+    //if (a < b) swap(a, b);
     
     // check if RFI
     if (my_contribution == 1) {
@@ -347,11 +382,11 @@ Action preflop_BB(GameState* game_state, RoundState* round_state, int active) {
     assert(big_blind);
     int legal_actions = round_state->legal_actions();
     std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
-    int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
-    int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
+    //int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
+    //int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     int my_stack = round_state->stacks[active];  // the number of chips you have remaining
     int opp_stack = round_state->stacks[1-active];  // the number of chips your opponent has remaining
-    int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
+    //int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
     int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
     // if opponent just limped/opened
@@ -463,6 +498,9 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     map<char, int> suit_cnts;
     suit_cnts[my_cards[0][1]]++;
     suit_cnts[my_cards[1][1]]++;
+    if (my_cards[0][0] == my_cards[1][0]) {
+        pair_cnt++;
+    }
     for (int i = 0; i < street; i++) {
         if (my_cards[0][0] == board_cards[i][0] || my_cards[1][0] == board_cards[i][0]) {
             pair_cnt++;
@@ -535,4 +573,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         }
         return check_fold(game_state, round_state, active);
     }
+
+    assert(0);
+    return FoldAction();
 }
