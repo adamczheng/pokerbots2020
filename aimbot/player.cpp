@@ -18,8 +18,7 @@ using namespace std;
 int preflop_delta;
 vector<pair<string,string> > hand_ranking;
 map<char, int> rank_map, suit_map;
-Player::Player()
-{
+Player::Player() {
     ifstream fin("ranking.txt");
     hand_ranking.resize(1326);
     for (int i = 0; i < 1326; i++) {
@@ -45,13 +44,11 @@ Player::Player()
 }
 bool on_check_fold;
 bool big_blind;
-int pair_cnt;
-int suited_cnt;
 int opp_3b_size;
 int cnt_4b_value;
 int opp_4b_size;
-int spw,spl,bpw,bpl,cp;
-int small_pots_won, small_pots_lost, big_pots_won, big_pots_lost, chopped_pots;
+int small_pots_won, small_pots_lost, big_pots_won, big_pots_lost, chopped_pots; // small is <= 50 chips
+int spw,spl,bpw,bpl,cp; // same as variables above but only for first 500 rounds
 
 struct Card {
 	int rank, suit;
@@ -96,8 +93,7 @@ int hand_type(const vector<string> &cards) {
  * @param round_state Pointer to the RoundState object.
  * @param active Your player's index.
  */
-void Player::handle_new_round(GameState* game_state, RoundState* round_state, int active)
-{
+void Player::handle_new_round(GameState* game_state, RoundState* round_state, int active) {
     //int my_bankroll = game_state->bankroll;  // the total number of chips you've gained or lost from the beginning of the game to the start of this round
     //float game_clock = game_state->game_clock;  // the total number of seconds your bot has left to play this game
     //int round_num = game_state->round_num;  // the round number from 1 to NUM_ROUNDS
@@ -106,8 +102,6 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
     opp_3b_size = 2;
     opp_4b_size = 1;
     on_check_fold = false;
-    pair_cnt = 0;
-    suited_cnt = 0;
     int street = round_state->street;
     assert(street == 0);
 }
@@ -119,8 +113,7 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
  * @param terminal_state Pointer to the TerminalState object.
  * @param active Your player's index.
  */
-void Player::handle_round_over(GameState* game_state, TerminalState* terminal_state, int active)
-{
+void Player::handle_round_over(GameState* game_state, TerminalState* terminal_state, int active) {
     RoundState* previous_state = (RoundState*) terminal_state->previous_state;  // RoundState before payoffs
     int street = previous_state->street;  // 0, 3, 4, or 5 representing when this round ended
     std::array<std::string, 2> my_cards = previous_state->hands[active];  // your cards
@@ -202,6 +195,7 @@ Action check_fold(GameState* game_state, RoundState* round_state, int active) {
     return FoldAction();
 }
 
+// check-call any bet
 Action check_call(GameState* game_state, RoundState* round_state, int active) {
     int legal_actions = round_state->legal_actions();
     if (CHECK_ACTION_TYPE & legal_actions)  // check-call
@@ -211,6 +205,7 @@ Action check_call(GameState* game_state, RoundState* round_state, int active) {
     return CallAction();
 }
 
+// check-call a bet <= pot
 Action check_call_under_pot(GameState* game_state, RoundState* round_state, int active) {
     int legal_actions = round_state->legal_actions();
     if (CHECK_ACTION_TYPE & legal_actions)  // check-call
@@ -232,7 +227,7 @@ Action check_call_under_pot(GameState* game_state, RoundState* round_state, int 
 }
 
 
-
+// uses a geometric sizing, jams if necessary
 Action geometric(GameState* game_state, RoundState* round_state, int active) {
     int legal_actions = round_state->legal_actions();  // mask representing the actions you are allowed to take
     int street = round_state->street;  // 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
@@ -276,6 +271,7 @@ Action geometric(GameState* game_state, RoundState* round_state, int active) {
     return CheckAction();
 }
 
+// for now redirects to geometric, but should just jam
 Action jam(GameState* game_state, RoundState* round_state, int active) {
     return geometric(game_state, round_state, active);
     int legal_actions = round_state->legal_actions();
@@ -292,10 +288,43 @@ Action jam(GameState* game_state, RoundState* round_state, int active) {
     return CheckAction();
 }
 
+Action quarter_pot_raise(GameState* game_state, RoundState* round_state, int active) {
+    int legal_actions = round_state->legal_actions();  // mask representing the actions you are allowed to take
+    int street = round_state->street;  // 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
+    std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
+    std::array<std::string, 5> board_cards = round_state->deck;  // the board cards
+    int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
+    int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
+    int my_stack = round_state->stacks[active];  // the number of chips you have remaining
+    int opp_stack = round_state->stacks[1-active];  // the number of chips your opponent has remaining
+    int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
+    int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
+    int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
+    int pot = 2 * opp_contribution;
+    int quarter_pot = pot / 4;
+    if (RAISE_ACTION_TYPE & legal_actions)  {
+        std::array<int, 2> raise_bounds = round_state->raise_bounds();  // the smallest and largest numbers of chips for a legal bet/raise
+        //int min_cost = raise_bounds[0] - my_pip;  // the cost of a minimum bet/raise
+        //int max_cost = raise_bounds[1] - my_pip;  // the cost of a maximum bet/raise
+        if (continue_cost + quarter_pot < raise_bounds[0]) {
+            return RaiseAction(raise_bounds[0]);
+        }
+        if (continue_cost + quarter_pot > raise_bounds[1]) {
+            return RaiseAction(raise_bounds[1]);
+        }
+        return RaiseAction(continue_cost + quarter_pot);
+    }
+    if (CALL_ACTION_TYPE & legal_actions) {
+        return CallAction();
+    }
+    return CheckAction();
+}
+
+// min raise / min bet
 Action min_raise(GameState* game_state, RoundState* round_state, int active) {
+    return quarter_pot_raise(game_state, round_state, active);
     int legal_actions = round_state->legal_actions();
-    if (RAISE_ACTION_TYPE & legal_actions)  // check-call
-    {
+    if (RAISE_ACTION_TYPE & legal_actions)  {
         std::array<int, 2> raise_bounds = round_state->raise_bounds();  // the smallest and largest numbers of chips for a legal bet/raise
         //int min_cost = raise_bounds[0] - my_pip;  // the cost of a minimum bet/raise
         //int max_cost = raise_bounds[1] - my_pip;  // the cost of a maximum bet/raise
@@ -319,12 +348,6 @@ Action preflop_BTN(GameState* game_state, RoundState* round_state, int active) {
     //int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
     int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
-
-    //bool are_suited = (my_cards[0][1] == my_cards[1][1]);
-    //bool is_pocket_pair = (my_cards[0][0] == my_cards[1][0]);
-    //int a = rank_map[my_cards[0][0]];
-    //int b = rank_map[my_cards[1][0]];
-    //if (a < b) swap(a, b);
     
     // check if RFI
     if (my_contribution == 1) {
@@ -461,10 +484,8 @@ Action preflop_BB(GameState* game_state, RoundState* round_state, int active) {
  * @param active Your player's index.
  * @return Your action.
  */
-Action Player::get_action(GameState* game_state, RoundState* round_state, int active)
-{
+Action Player::get_action(GameState* game_state, RoundState* round_state, int active) {
     int legal_actions = round_state->legal_actions();  // mask representing the actions you are allowed to take
-    //cout << legal_actions << endl;
     int street = round_state->street;  // 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
     std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
     std::array<std::string, 5> board_cards = round_state->deck;  // the board cards
@@ -475,12 +496,11 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
     int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
-    //cout << (game_state->round_num) << ' ' << (game_state->bankroll) << ' ' << (game_state->game_clock) << endl;
     if ( legal_actions == CHECK_ACTION_TYPE ) {
         return CheckAction();
     }
     if (((NUM_ROUNDS - game_state->round_num + 1)*3 + 1) / 2 < game_state->bankroll) {
-        //on_check_fold = true;
+        on_check_fold = true;
     }
     if (on_check_fold) {
         return check_fold(game_state, round_state, active);
@@ -492,9 +512,11 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	uniform_int_distribution<int> R(0,99);
 
-    pair_cnt = 0;
-    
-    suited_cnt = 0;
+    int pair_cnt = 0;
+    int suited_cnt = 0;
+    int board_suited_cnt = 0;
+
+    // compute above vars
     map<char, int> suit_cnts;
     suit_cnts[my_cards[0][1]]++;
     suit_cnts[my_cards[1][1]]++;
@@ -512,10 +534,11 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     }
     suit_cnts[my_cards[0][1]]--;
     suit_cnts[my_cards[1][1]]--;
-    int board_suited_cnt = 0;
     for (auto it : suit_cnts) {
         board_suited_cnt = max(board_suited_cnt, it.second);
     }
+
+    // unmade hands
     if (street > 0 && pair_cnt == 0) {
         // flush
         if (suited_cnt >= 5) {
@@ -573,7 +596,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         }
         return check_fold(game_state, round_state, active);
     }
-
+    // shouldn't get here
     assert(0);
     return FoldAction();
 }
