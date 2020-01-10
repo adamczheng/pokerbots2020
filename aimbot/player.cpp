@@ -1,6 +1,3 @@
-/**
- * Simple example pokerbot, written in C++.
- */
 #include "player.hpp"
 #include <iostream>
 #include <fstream>
@@ -52,6 +49,12 @@ int small_pots_won, small_pots_lost, big_pots_won, big_pots_lost, chopped_pots; 
 int spw,spl,bpw,bpl,cp; // same as variables above but only for first 500 rounds
 vector<int> pf_deltas;
 int all_in_pre_delta;
+
+int flop_delta, turn_delta, river_delta, showdown_delta;
+int flop_tot, turn_tot, river_tot, showdown_tot;
+
+int my_btn_vpip, opp_btn_vpip;
+int my_bb_vpip, opp_bb_vpip;
 
 struct Card {
 	int rank, suit;
@@ -122,6 +125,38 @@ void Player::handle_round_over(GameState* game_state, TerminalState* terminal_st
         my_hand.push_back(board_cards[i]);
         opp_hand.push_back(board_cards[i]);
     }
+    int my_pip = previous_state->pips[active];
+    int opp_pip = previous_state->pips[active];
+    int my_stack = previous_state->stacks[active];
+    int opp_stack = previous_state->stacks[1-active];
+    int my_contribution = STARTING_STACK - my_stack;
+    int opp_contribution = STARTING_STACK - opp_stack;
+    
+    if (big_blind) {
+        if (my_contribution > 2) my_bb_vpip++;
+        if (opp_contribution > 1) opp_btn_vpip++;
+    } else {
+        if (my_contribution > 1) my_btn_vpip++;
+        if (opp_contribution > 2) opp_bb_vpip++;
+    }
+    
+    if (!all_in_pre) {
+        if (street == 3) {
+            flop_delta += my_delta;
+            flop_tot++;
+        } else if (street == 4) {
+            turn_delta += my_delta;
+            turn_tot++;
+        } else if (street == 5) {
+            if (my_contribution!=opp_contribution){
+                river_delta += my_delta;
+                river_tot++;
+            } else {
+                showdown_delta += my_delta;
+                showdown_tot++;
+            }
+        }
+    }
     if (my_delta < -50) {
         cout << my_delta << ", round #" << (game_state->round_num) << 
         ", street: " << street << ", " << hand_type_convert[hand_type(my_hand)] << " vs " << hand_type_convert[hand_type(opp_hand)];
@@ -166,10 +201,16 @@ void Player::handle_round_over(GameState* game_state, TerminalState* terminal_st
         cout << "spw/spl/bpw/bpl/cp: " << small_pots_won << ' ' << small_pots_lost << ' ' << big_pots_won << ' ' << big_pots_lost << ' ' << chopped_pots << endl;
         cout << "first half:         " << spw << ' ' << spl << ' ' << bpw << ' ' << bpl << ' ' << cp << endl;
         cout << "second half:        " << small_pots_won - spw << ' ' << small_pots_lost - spl << ' ' << big_pots_won - bpw << ' ' << big_pots_lost - bpl << ' ' << chopped_pots - cp << endl;
+        cout << "flop avg delta:     " << 1.0*flop_delta/flop_tot << "(sample: "<< flop_tot << ")\n";
+        cout << "turn avg delta:     " << 1.0*turn_delta/turn_tot << "(sample: "<< turn_tot << ")\n";
+        cout << "river avg delta:    " << 1.0*river_delta/river_tot << "(sample: "<< river_tot << ")\n";
+        cout << "showdown avg delta: " << 1.0*showdown_delta/showdown_tot << "(sample: "<< showdown_tot << ")\n";
+        cout << "opp BN VPIP/BB VPIP:" << (int)(100.0*opp_btn_vpip/500) << ' ' << (int)(100.0*opp_bb_vpip/500) << '\n';
+        cout << "my BN VPIP/BB VPIP: " << (int)(100.0*my_btn_vpip/500) << ' ' << (int)(100.0*my_bb_vpip/500) << '\n';
     }
 }
 
-// check-fold, but calls a bet if size <= 1/5 pot
+// check-fold, but calls a bet if size <= 1/4 pot
 Action check_fold(GameState* game_state, RoundState* round_state, int active) {
     int legal_actions = round_state->legal_actions();
     if (CHECK_ACTION_TYPE & legal_actions)  // check-call
@@ -184,7 +225,7 @@ Action check_fold(GameState* game_state, RoundState* round_state, int active) {
     int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
     int pot = my_contribution + opp_contribution;
-    if (10*continue_cost <= pot) {
+    if (4*continue_cost <= pot-continue_cost) {
         return CallAction();
     }
     return FoldAction();
@@ -247,6 +288,8 @@ Action geometric(GameState* game_state, RoundState* round_state, int active) {
     } else if (street == 5) {
         bet_size = continue_cost + (int)(1.0*all_in_pot_size/initial_pot-1)/2*initial_pot;
     }
+    // prevent massive overbets
+    bet_size = min(2*initial_pot, bet_size);
     if (RAISE_ACTION_TYPE & legal_actions)  // check-call
     {
         std::array<int, 2> raise_bounds = round_state->raise_bounds();  // the smallest and largest numbers of chips for a legal bet/raise
@@ -290,7 +333,7 @@ Action quarter_pot_raise(GameState* game_state, RoundState* round_state, int act
     std::array<std::string, 5> board_cards = round_state->deck;  // the board cards
     //int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
     //int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
-    int my_stack = round_state->stacks[active];  // the number of chips you have remaining
+    //int my_stack = round_state->stacks[active];  // the number of chips you have remaining
     int opp_stack = round_state->stacks[1-active];  // the number of chips your opponent has remaining
     //int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
     //int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
@@ -344,15 +387,6 @@ Action preflop_BTN(GameState* game_state, RoundState* round_state, int active) {
     int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
     
-    // calling jams with top 69 hands
-    if (opp_contribution == 200) {
-        for (int i = 1326-69; i < 1326; i++) {
-            if ((my_cards[0] == hand_ranking[i].first && my_cards[1] == hand_ranking[i].second) || (my_cards[1] == hand_ranking[i].first && my_cards[0] == hand_ranking[i].second)) {
-                return CallAction();
-            }
-        }
-    }
-    
     // check if RFI
     if (my_contribution == 1) {
         // check if in top 1074 hands
@@ -362,6 +396,14 @@ Action preflop_BTN(GameState* game_state, RoundState* round_state, int active) {
             }
         }
         return RaiseAction(4);
+    }
+    // calling jams with top 69 hands
+    if (opp_contribution == 200) {
+        for (int i = 1326-69; i < 1326; i++) {
+            if ((my_cards[0] == hand_ranking[i].first && my_cards[1] == hand_ranking[i].second) || (my_cards[1] == hand_ranking[i].first && my_cards[0] == hand_ranking[i].second)) {
+                return CallAction();
+            }
+        }
     }
     // check if we are facing a 3-bet+
     //if (my_contribution == 4) {
@@ -492,6 +534,7 @@ Action preflop_BB(GameState* game_state, RoundState* round_state, int active) {
     double MDF = 1 - 1.0 * (opp_contribution - opp_4b_size) / (opp_contribution + my_contribution);*/
 
 }
+
 /**
  * Where the magic happens - your code should implement this function.
  * Called any time the engine needs an action from your bot.
@@ -560,21 +603,32 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         board_suited_cnt = max(board_suited_cnt, it.second);
     }
 
+    vector<string> my_hand = {my_cards[0], my_cards[1]};
+    for (int i = 0; i < street; i++) {
+        my_hand.push_back(board_cards[i]);
+    }
+    int my_hand_type = hand_type(my_hand);
+
     // flop play
     if (street == 3) {
+        bool dont_raise = false;
+        if (my_pip > 0 && opp_pip > 0) {
+            dont_raise = true;
+        }
         // exploitatively bet 30% whenever possible
-        if (continue_cost == 0) {
-            int bet_size = max(2, 3*pot/10);
-            if (legal_actions & RAISE_ACTION_TYPE) {
+        if (4*continue_cost <= pot-continue_cost) {
+            int bet_size = max(2, 3*(pot+continue_cost)/10);
+            if ((legal_actions & RAISE_ACTION_TYPE) && (!dont_raise)) {
                 std::array<int, 2> raise_bounds = round_state->raise_bounds();
                 bet_size = min(bet_size, raise_bounds[1]);
+                bet_size = max(raise_bounds[0], bet_size);
                 return RaiseAction(bet_size);
             }
             return CheckAction();
         }
 
         // backdoor flush draw with no pair (<=4.2% of hitting)
-        if (pair_cnt == 0 && suited_cnt == 3 && board_suited_cnt < suited_cnt) {
+        if (pair_cnt == 0 && suited_cnt == 3 && board_suited_cnt < suited_cnt && my_cards[0][1] == my_cards[1][1]) {
             if (R(rng) < 50) {
                 return CallAction();
             }
@@ -583,7 +637,8 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
 
         // flush draw with no pair
         if (pair_cnt == 0 && suited_cnt == 4 && board_suited_cnt < suited_cnt) {
-            if (R(rng) < 50) {
+            // TODO: take into account monotone flops
+            if (R(rng) < 50 && (!dont_raise)) {
                 return min_raise(game_state, round_state, active);
             }
             return CallAction();
@@ -591,7 +646,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
 
         // flush draw with a pair
         if (pair_cnt > 0 && suited_cnt == 4 && board_suited_cnt < suited_cnt) {
-            if (R(rng) < 50) {
+            if (R(rng) < 50 && !dont_raise) {
                 return min_raise(game_state, round_state, active);
             }
             return CallAction();
@@ -599,7 +654,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
 
         // call half our flushes and raise the rest
         if (suited_cnt >= 5) {
-            if (R(rng) < 50) {
+            if (R(rng) < 50 && !dont_raise) {
                 return min_raise(game_state, round_state, active);
             }
             return CallAction();
@@ -615,9 +670,9 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         }
 
         // value hands
-        if (R(rng) < 40) {
+        if (R(rng) < 40 && !dont_raise) {
             return jam(game_state, round_state, active);
-        } else if (R(rng) < 40) {
+        } else if (R(rng) < 40 && !dont_raise) {
             return min_raise(game_state, round_state, active);
         } else {
             return check_call(game_state, round_state, active);
@@ -625,9 +680,12 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
 
         assert(0);
     }
-
+    bool dont_raise = false;
+    if (my_pip>0 && opp_pip>0) {
+        dont_raise=true;
+    }
     // unmade hands
-    if (street > 0 && pair_cnt == 0) {
+    if (street > 0 && pair_cnt == 0 && suited_cnt < 5) {
         if (suited_cnt == 4 && street == 4 && board_suited_cnt < suited_cnt) {
             if (R(rng) < 40) {
                 return min_raise(game_state, round_state, active);
@@ -637,10 +695,23 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
             }
         }
         // high card
+        if (4*continue_cost <= pot-continue_cost) {
+            int bet_size = max(2, 3*(pot+continue_cost)/10);
+            if ((legal_actions & RAISE_ACTION_TYPE) && (!dont_raise)) {
+                std::array<int, 2> raise_bounds = round_state->raise_bounds();
+                bet_size = min(bet_size, raise_bounds[1]);
+                bet_size = max(raise_bounds[0], bet_size);
+                return RaiseAction(bet_size);
+            }
+            return CheckAction();
+        }
         return check_fold(game_state, round_state, active);
     }
     // value
-    if (pair_cnt > 1 || suited_cnt >= 5) {
+    if ((my_hand_type == 2 && suited_cnt < 4 && pair_cnt >= 2) // two pair
+        || (my_hand_type == 3 && suited_cnt < 4 && pair_cnt >= 2) // trips
+        || (my_hand_type == 4) // flush (TODO: consider 4-flush boards)
+        || (my_hand_type > 4)) { // nuts (TODO: double paired boards or triple boards or quad boards)
         if (R(rng) < 40) {
             return jam(game_state, round_state, active);
         } else if (R(rng) < 80) {
@@ -650,17 +721,40 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         }
     }
     // one pair
-    if (pair_cnt == 1) {
-        if (3*continue_cost <= pot) {
-            // raise with 1 pair
-            if (suited_cnt == 4 && board_suited_cnt < suited_cnt && R(rng) < 50 && (legal_actions & RAISE_ACTION_TYPE) && street == 4) {
-                return min_raise(game_state, round_state, active);
-            }
+    if (pair_cnt == 1 || suited_cnt >= 4) {
+        // fold non-flush on a 4-flush board unless small bet and 2p+
+        if (2*continue_cost <= pot-continue_cost) { 
             return check_call(game_state, round_state, active);
+        }
+        if (board_suited_cnt == 4) {
+            if (4*continue_cost <= pot-continue_cost) {
+                int bet_size = max(2, 3*(pot+continue_cost)/10);
+                if ((legal_actions & RAISE_ACTION_TYPE) && (!dont_raise)) {
+                    std::array<int, 2> raise_bounds = round_state->raise_bounds();
+                    bet_size = min(bet_size, raise_bounds[1]);
+                    bet_size = max(raise_bounds[0], bet_size);
+                    return RaiseAction(bet_size);
+                }
+                return CheckAction();
+            }
+            return check_fold(game_state, round_state, active);
         }
         // raise with 1 pair
         if (suited_cnt == 4 && board_suited_cnt < suited_cnt && R(rng) < 50 && (legal_actions & RAISE_ACTION_TYPE) && street == 4) {
             return min_raise(game_state, round_state, active);
+        }
+        if (continue_cost <= pot-continue_cost && board_suited_cnt == 4) { 
+            return check_call(game_state, round_state, active);
+        }
+        if (4*continue_cost <= pot-continue_cost) {
+            int bet_size = max(2, 3*(pot+continue_cost)/10);
+            if ((legal_actions & RAISE_ACTION_TYPE) && (!dont_raise)) {
+                std::array<int, 2> raise_bounds = round_state->raise_bounds();
+                bet_size = min(bet_size, raise_bounds[1]);
+                bet_size = max(raise_bounds[0], bet_size);
+                return RaiseAction(bet_size);
+            }
+            return CheckAction();
         }
         return check_fold(game_state, round_state, active);
     }
