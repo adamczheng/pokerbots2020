@@ -7,15 +7,101 @@
 #include <chrono>
 #include <cmath>
 #include <algorithm>
+#include <set>
+#include "OMPEval/omp/EquityCalculator.h"
 using namespace std;
+using namespace omp;
+const int FILTER_END_SIZE = 100;
+// permutation generator
+map<long long, bool> seen_permutation;
+long long perm_to_mask(const vector<int> &perm) {
+    long long res = 0;
+    for (int i = 0; i < 13; i++) {
+        res *= 16;
+        res += perm[i];
+    }
+    return res;
+}
+vector<int> mask_to_perm(long long mask) {
+    vector<int> res(13);
+    for (int i = 0; i < 13; i++) {
+        res[12-i] = mask % 16;
+        mask /= 16;
+    }
+    return res;
+}
+vector<int> permute_values() {
+    vector<int> orig_perm = {12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0};
+    vector<int> prop_perm;
+    mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+    geometric_distribution<int> distribution(0.25);
+    for (int i = 0; i < 13; i++) {
+        int pop_i = orig_perm.size() - 1 - (distribution(rng) % orig_perm.size());
+        prop_perm.push_back(orig_perm[pop_i]);
+        orig_perm.erase(orig_perm.begin() + pop_i);
+    }
+    //reverse(prop_perm.begin(),prop_perm.end());
+    return prop_perm;
+}
+
+vector<int> permute_slightly(vector<int> orig_perm) {
+    vector<int> prop_perm;
+    mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+    geometric_distribution<int> distribution(0.95);
+    for (int i = 0; i < 13; i++) {
+        int pop_i = orig_perm.size() - 1 - (distribution(rng) % orig_perm.size());
+        prop_perm.push_back(orig_perm[pop_i]);
+        orig_perm.erase(orig_perm.begin() + pop_i);
+    }
+    //reverse(prop_perm.begin(),prop_perm.end());
+    return prop_perm;
+}
+
+// for OMPEval
+int chars_to_cards(char rank, char suit) {
+    map<char, int> suit_map = {{'s',0},{'h',1},{'c',2},{'d',3}};
+    map<char, int> rank_map;
+    string ranks = "23456789TJQKA";
+    for (int i = 0; i < 13; i++) {
+        rank_map[ranks[i]] = i;
+    }
+    return rank_map[rank]*4 + suit_map[suit];
+}
 
 /**
  * Called when a new game starts. Called exactly once.
  */
+ struct Card {
+	int rank, suit;
+};
 int preflop_delta;
+int filter_done, filter_done_sd;
 vector<pair<string,string> > hand_ranking;
 map<char, int> rank_map, suit_map;
+map<int,char> rankrmap;
+vector<Card>deck;
+vector<vector<int> > proposal_perms;
+vector<int> final_perm;
+bool perm_finalized;
+vector<pair<vector<string>,vector<string> > > showdown_rules;
+HandEvaluator eval;
 Player::Player() {
+    //string ranks="23456789TJQKA";
+    //string suits="shdc";
+    vector<int> asdfasdf = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
+    seen_permutation[perm_to_mask(asdfasdf)] = true;
+    proposal_perms.push_back(asdfasdf);
+
+    for (int i = 0; i < 50000; i++) {
+        vector<int> proposal_perm = permute_values();
+        proposal_perms.push_back(proposal_perm);
+        seen_permutation[perm_to_mask(proposal_perm)] = true;
+    }
+    for (int i = 2; i <= 14; i++) {
+		for (int j = 0; j < 4; j++) {
+			deck.push_back({i, j});
+		}
+	}
     ifstream fin("ranking.txt");
     hand_ranking.resize(1326);
     for (int i = 0; i < 1326; i++) {
@@ -34,10 +120,13 @@ Player::Player() {
     rank_map['Q']=12;
     rank_map['K']=13;
     rank_map['A']=14;
+    for(auto it : rank_map){
+        rankrmap[it.second]=it.first;
+    }
     suit_map['s']=0;
     suit_map['h']=1;
-    suit_map['d']=2;
-    suit_map['c']=3;
+    suit_map['c']=2;
+    suit_map['d']=3;
 }
 bool all_in_pre;
 bool on_check_fold;
@@ -56,11 +145,10 @@ int flop_tot, turn_tot, river_tot, showdown_tot;
 int my_btn_vpip, opp_btn_vpip;
 int my_bb_vpip, opp_bb_vpip;
 
-struct Card {
-	int rank, suit;
-};
+
 const string rank_convert[15]={"error0","error1","2","3","4","5","6","7","8","9","T","J","Q","K","A"};
 const string hand_type_convert[8]={"high card","pair","two pair","3 of a kind","flush","full house","quads","unknown"};
+const double outs_table[23]={0,0.042,0.084,0.124,0.164,0.203,0.241,0.278,0.314,0.349,0.383,0.417,0.449,0.481,0.511,0.541,0.569,0.624,0.650,0.675,0.699,0.72};
 // 0: high card, 1:pair, 2:2 pair, 3:3 of a kind, 4:flush, 5:full house, 6:quads, 7:not revealed
 int hand_type(const vector<string> &cards) {
     int rank_cnt[15] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
@@ -96,7 +184,6 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
     //int my_bankroll = game_state->bankroll;  // the total number of chips you've gained or lost from the beginning of the game to the start of this round
     //float game_clock = game_state->game_clock;  // the total number of seconds your bot has left to play this game
     //int round_num = game_state->round_num;  // the round number from 1 to NUM_ROUNDS
-    //std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
     big_blind = (bool) active;  // true if you are the big blind
     all_in_pre = false;
     opp_3b_size = 2;
@@ -104,6 +191,164 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
     on_check_fold = false;
     int street = round_state->street;
     assert(street == 0);
+    string ranks = "23456789TJQKA";
+    mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+	uniform_int_distribution<int> R(0,proposal_perms.size()-1);
+    vector<int> guess = proposal_perms[R(rng)];
+    if (perm_finalized) {
+        guess=final_perm;
+    }
+    for (int i = 0; i < 13; i++) {
+        rank_map[ranks[guess[i]]]=i+2;
+    }
+}
+
+int extras;
+
+void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int active){
+    if (perm_finalized) return;
+    RoundState* previous_state = (RoundState*) terminal_state->previous_state;  // RoundState before payoffs
+    int street = previous_state->street;  // 0, 3, 4, or 5 representing when this round ended
+    std::array<std::string, 2> my_cards = previous_state->hands[active];  // your cards
+    std::array<std::string, 2> opp_cards = previous_state->hands[1-active];  // opponent's cards or "" if not revealed
+    int my_delta = terminal_state->deltas[active];  // your bankroll change from this round
+    vector<string> my_hand = {my_cards[0], my_cards[1]}, opp_hand = {opp_cards[0], opp_cards[1]};
+    std::array<std::string, 5> board_cards = previous_state->deck;
+    for (int i = 0; i < street; i++) {
+        my_hand.push_back(board_cards[i]);
+        opp_hand.push_back(board_cards[i]);
+    }
+
+    if (my_delta > 0) {
+        showdown_rules.push_back(make_pair(my_hand, opp_hand));
+    } else if (my_delta < 0) {
+        showdown_rules.push_back(make_pair(opp_hand, my_hand));
+    }
+    vector<vector<int> > new_perms;
+    
+    for (const vector<int> &proposal_perm : proposal_perms) {
+        vector<int> my_sd_cards;
+        vector<int> opp_sd_cards;
+        assert(my_hand.size() == 7);
+        string ranks="23456789TJQKA";
+        map<char,char>mpp;
+        // guess =  0  1  2 3 4 5 6 7 8 9 11 10 12
+        // ranks =  2  3  4 5 6 7 8 9 T J Q   K  A
+        // rg    =  2  3  4 5 6 7 8 9 T J K   Q  A
+        for (int i = 0; i < 13; i++) {
+            mpp[ranks[i]]=ranks[proposal_perm[i]];
+            //cout << ranks[i] << " maps to " << ranks[proposal_perm[i]] << endl;
+        }
+        for (string &c : my_hand) {
+            my_sd_cards.push_back(chars_to_cards(mpp[c[0]], c[1]));
+        }
+        for (string &c : opp_hand) {
+            opp_sd_cards.push_back(chars_to_cards(mpp[c[0]], c[1]));
+        }
+
+        Hand h = Hand::empty();
+        for (int c : my_sd_cards) {
+            h += Hand(c);
+        }
+        int my_strength = eval.evaluate(h);
+        Hand h2 = Hand::empty();
+        for (int c : opp_sd_cards) {
+            h2 += Hand(c);
+        }
+        int opp_strength = eval.evaluate(h2);
+        if (my_strength > opp_strength && my_delta > 0)
+            new_perms.push_back(proposal_perm);
+        else if (my_strength < opp_strength && my_delta < 0)
+            new_perms.push_back(proposal_perm);
+        else if (my_strength == opp_strength && my_delta == 0)
+            new_perms.push_back(proposal_perm);
+        
+        //else
+        //    cout << "contradiction\n";
+    }
+    while (new_perms.size() >= 2 && new_perms.size() < FILTER_END_SIZE) {
+        
+        //if (new_perms.size() == FILTER_END_SIZE) {
+            //cout << "here\n";
+            int s = new_perms.size();
+            for (int i = 0; i < s; i++) {
+                vector<int> prop = new_perms[i];
+                //int cnt = 0;
+                for (int j = 0; j < 13; j++){
+                    for (int k=j;k<13;k++){
+                        if (j==k&&j!=0) continue;
+                        //cnt++;
+                        //if (cnt==10)break;
+                        swap(prop[j],prop[k]);
+                        bool works = true;
+                        string ranks="23456789TJQKA";
+                        map<char,char>mpp;
+                        if (seen_permutation[perm_to_mask(prop)]) {
+                        //    works = false;
+                        }
+                        seen_permutation[perm_to_mask(prop)] = true;
+                        if (works){
+                        for (int ii = 0; ii < 13; ii++) {
+                            mpp[ranks[ii]]=ranks[prop[ii]];
+                            //cout << ranks[i] << " maps to " << ranks[proposal_perm[i]] << endl;
+                        }
+                        for (auto it : showdown_rules) {
+                            
+                            vector<int> my_sd_cards;
+                            vector<int> opp_sd_cards;
+                            assert(it.first.size() == 7);
+                            
+                            for (string &c : it.first) {
+                                my_sd_cards.push_back(chars_to_cards(mpp[c[0]], c[1]));
+                            }
+                            for (string &c : it.second) {
+                                opp_sd_cards.push_back(chars_to_cards(mpp[c[0]], c[1]));
+                            }
+                            Hand h = Hand::empty();
+                            for (int c : my_sd_cards) {
+                                h += Hand(c);
+                            }
+                            int my_strength = eval.evaluate(h);
+                            Hand h2 = Hand::empty();
+                            for (int c : opp_sd_cards) {
+                                h2 += Hand(c);
+                            }
+                            int opp_strength = eval.evaluate(h2);
+                            if (my_strength <= opp_strength) {
+                                works = false;
+                                break;
+                            }
+                        }                
+                     }
+                        if (works) {
+                            new_perms.push_back(prop);
+                        }
+                        swap(prop[j],prop[k]);
+                    }
+                }
+            }
+            bool all_equal = true;
+            for (int i = 1; i < (int)new_perms.size(); i++) {
+                if (new_perms[i] != new_perms[i-1]){
+                    all_equal=false;
+                    break;
+                }
+            }
+            if (all_equal) {
+                filter_done = game_state->round_num;
+                filter_done_sd = showdown_tot;
+                perm_finalized=true;
+                final_perm=new_perms[0];
+                return;
+            }
+        //}
+       
+    }
+    //cout << new_perms.size() << endl;
+    proposal_perms.clear();
+    for (int i = 0; i < (int)new_perms.size(); i++)
+        proposal_perms.push_back(new_perms[i]);
+    
 }
 
 /**
@@ -125,8 +370,8 @@ void Player::handle_round_over(GameState* game_state, TerminalState* terminal_st
         my_hand.push_back(board_cards[i]);
         opp_hand.push_back(board_cards[i]);
     }
-    int my_pip = previous_state->pips[active];
-    int opp_pip = previous_state->pips[active];
+    //int my_pip = previous_state->pips[active];
+    //int opp_pip = previous_state->pips[active];
     int my_stack = previous_state->stacks[active];
     int opp_stack = previous_state->stacks[1-active];
     int my_contribution = STARTING_STACK - my_stack;
@@ -195,9 +440,9 @@ void Player::handle_round_over(GameState* game_state, TerminalState* terminal_st
     if (game_state->round_num == 1000) {
         //cout << "pf delta: " << preflop_delta << endl;
         for (int i=0; i<10; i++) {
-            cout << "pf delta on round " << (i+1)*100 << ": " << pf_deltas[i] << '\n';
+            cout << "pf delta on round " << (i+1)*100 << ": " << pf_deltas[i] << endl;
         }
-        cout << "all-in pre delta:   " << all_in_pre_delta << '\n';
+        cout << "all-in pre delta:   " << all_in_pre_delta << endl;
         cout << "spw/spl/bpw/bpl/cp: " << small_pots_won << ' ' << small_pots_lost << ' ' << big_pots_won << ' ' << big_pots_lost << ' ' << chopped_pots << endl;
         cout << "first half:         " << spw << ' ' << spl << ' ' << bpw << ' ' << bpl << ' ' << cp << endl;
         cout << "second half:        " << small_pots_won - spw << ' ' << small_pots_lost - spl << ' ' << big_pots_won - bpw << ' ' << big_pots_lost - bpl << ' ' << chopped_pots - cp << endl;
@@ -205,10 +450,42 @@ void Player::handle_round_over(GameState* game_state, TerminalState* terminal_st
         cout << "turn avg delta:     " << 1.0*turn_delta/turn_tot << "(sample: "<< turn_tot << ")\n";
         cout << "river avg delta:    " << 1.0*river_delta/river_tot << "(sample: "<< river_tot << ")\n";
         cout << "showdown avg delta: " << 1.0*showdown_delta/showdown_tot << "(sample: "<< showdown_tot << ")\n";
-        cout << "opp BN VPIP/BB VPIP:" << (int)(100.0*opp_btn_vpip/500) << ' ' << (int)(100.0*opp_bb_vpip/500) << '\n';
-        cout << "my BN VPIP/BB VPIP: " << (int)(100.0*my_btn_vpip/500) << ' ' << (int)(100.0*my_bb_vpip/500) << '\n';
+        cout << "opp BN VPIP/BB VPIP:" << (int)(100.0*opp_btn_vpip/500) << ' ' << (int)(100.0*opp_bb_vpip/500) << endl;
+        cout << "my BN VPIP/BB VPIP: " << (int)(100.0*my_btn_vpip/500) << ' ' << (int)(100.0*my_bb_vpip/500) << endl;
+        string ranks = "23456789TJQKA";
+        if (!perm_finalized){
+            cout << "possible permutations (by particle filter):" << endl;
+            set<long long> ssss;
+            for (const vector<int> &v : proposal_perms) {
+                /*for (int i=0;i<13;i++){
+                    cout<<ranks[v[i]] << ' ';
+                }
+                cout<<'\n';*/
+                ssss.insert(perm_to_mask(v));
+            }
+            for (long long fdsa : ssss) {
+                for (int x : mask_to_perm(fdsa)) {
+                    cout << ranks[x] << ' ';
+                }
+                cout << '\n';
+            }
+        }
+        cout << "filter done on round: " << filter_done << endl;
+        cout << "filter done on SD#:   " << filter_done_sd << endl;
+        cout << "extras: " << extras << endl;
+        cout << "final perm:\n";
+        for (int x:final_perm)cout<<ranks[x]<<' ';
+        cout<<'\n';
+        cout << "time left: " << (game_state->game_clock) << endl;
     }
+    
+    if (street == 5 && my_contribution == opp_contribution) {
+        handle_showdowns(game_state,terminal_state,active);
+    }
+        
 }
+
+
 
 // check-fold, but calls a bet if size <= 1/4 pot
 Action check_fold(GameState* game_state, RoundState* round_state, int active) {
@@ -267,8 +544,6 @@ Action check_call_under_pot(GameState* game_state, RoundState* round_state, int 
 Action geometric(GameState* game_state, RoundState* round_state, int active) {
     int legal_actions = round_state->legal_actions();  // mask representing the actions you are allowed to take
     int street = round_state->street;  // 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
-    std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
-    std::array<std::string, 5> board_cards = round_state->deck;  // the board cards
     int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
     int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     int my_stack = round_state->stacks[active];  // the number of chips you have remaining
@@ -278,7 +553,7 @@ Action geometric(GameState* game_state, RoundState* round_state, int active) {
     int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
     int initial_pot = 2 * max(my_contribution, opp_contribution);
     int all_in_pot_size = 400;
-    int bet_size;
+    int bet_size = 0;
     if (street == 0) {
         bet_size = continue_cost + (int)pow((1.0*all_in_pot_size/initial_pot-1)/2*initial_pot, 0.25);
     } else if (street == 3) {
@@ -329,8 +604,6 @@ Action jam(GameState* game_state, RoundState* round_state, int active) {
 Action quarter_pot_raise(GameState* game_state, RoundState* round_state, int active) {
     int legal_actions = round_state->legal_actions();  // mask representing the actions you are allowed to take
     //int street = round_state->street;  // 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
-    std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
-    std::array<std::string, 5> board_cards = round_state->deck;  // the board cards
     //int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
     //int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     //int my_stack = round_state->stacks[active];  // the number of chips you have remaining
@@ -379,6 +652,8 @@ Action preflop_BTN(GameState* game_state, RoundState* round_state, int active) {
     assert(!big_blind);
     int legal_actions = round_state->legal_actions();
     std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
+    my_cards[0][0]=rankrmap[rank_map[my_cards[0][0]]];
+    my_cards[1][0]=rankrmap[rank_map[my_cards[1][0]]];
     //int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
     //int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     int my_stack = round_state->stacks[active];  // the number of chips you have remaining
@@ -391,7 +666,9 @@ Action preflop_BTN(GameState* game_state, RoundState* round_state, int active) {
     if (my_contribution == 1) {
         // check if in top 1074 hands
         for (int i = 0; i < 252; i++) {
-            if ((my_cards[0] == hand_ranking[i].first && my_cards[1] == hand_ranking[i].second) || (my_cards[1] == hand_ranking[i].first && my_cards[0] == hand_ranking[i].second)) {
+            
+            if ((my_cards[0] == hand_ranking[i].first && my_cards[1] == hand_ranking[i].second)
+            || (my_cards[1] == hand_ranking[i].first && my_cards[0] == hand_ranking[i].second)) {
                 return FoldAction();
             }
         }
@@ -400,7 +677,8 @@ Action preflop_BTN(GameState* game_state, RoundState* round_state, int active) {
     // calling jams with top 69 hands
     if (opp_contribution == 200) {
         for (int i = 1326-69; i < 1326; i++) {
-            if ((my_cards[0] == hand_ranking[i].first && my_cards[1] == hand_ranking[i].second) || (my_cards[1] == hand_ranking[i].first && my_cards[0] == hand_ranking[i].second)) {
+            if ((my_cards[0] == hand_ranking[i].first && my_cards[1] == hand_ranking[i].second) 
+            || (my_cards[1] == hand_ranking[i].first && my_cards[0] == hand_ranking[i].second)) {
                 return CallAction();
             }
         }
@@ -452,6 +730,8 @@ Action preflop_BB(GameState* game_state, RoundState* round_state, int active) {
     assert(big_blind);
     int legal_actions = round_state->legal_actions();
     std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
+    my_cards[0][0]=rankrmap[rank_map[my_cards[0][0]]];
+    my_cards[1][0]=rankrmap[rank_map[my_cards[1][0]]];
     //int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
     //int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     int my_stack = round_state->stacks[active];  // the number of chips you have remaining
@@ -548,7 +828,12 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     int legal_actions = round_state->legal_actions();  // mask representing the actions you are allowed to take
     int street = round_state->street;  // 0, 3, 4, or 5 representing pre-flop, flop, turn, or river respectively
     std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
+    my_cards[0][0]=rankrmap[rank_map[my_cards[0][0]]];
+    my_cards[1][0]=rankrmap[rank_map[my_cards[1][0]]];
     std::array<std::string, 5> board_cards = round_state->deck;  // the board cards
+    for (int i = 0; i < street; i++) {
+        board_cards[i][0] = rankrmap[rank_map[board_cards[i][0]]];
+    }
     int my_pip = round_state->pips[active];  // the number of chips you have contributed to the pot this round of betting
     int opp_pip = round_state->pips[1-active];  // the number of chips your opponent has contributed to the pot this round of betting
     int my_stack = round_state->stacks[active];  // the number of chips you have remaining
@@ -624,7 +909,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
                 bet_size = max(raise_bounds[0], bet_size);
                 return RaiseAction(bet_size);
             }
-            return CheckAction();
+            return CallAction();
         }
 
         // backdoor flush draw with no pair (<=4.2% of hitting)
@@ -685,7 +970,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         dont_raise=true;
     }
     // unmade hands
-    if (street > 0 && pair_cnt == 0 && suited_cnt < 5) {
+    if (pair_cnt == 0 && suited_cnt < 5) {
         if (suited_cnt == 4 && street == 4 && board_suited_cnt < suited_cnt) {
             if (R(rng) < 40) {
                 return min_raise(game_state, round_state, active);
