@@ -11,7 +11,7 @@
 #include "OMPEval/omp/EquityCalculator.h"
 using namespace std;
 using namespace omp;
-const int FILTER_END_SIZE = 100;
+int FILTER_END_SIZE = 2000;
 // permutation generator
 map<long long, bool> seen_permutation;
 long long perm_to_mask(const vector<int> &perm) {
@@ -92,7 +92,7 @@ Player::Player() {
     seen_permutation[perm_to_mask(asdfasdf)] = true;
     proposal_perms.push_back(asdfasdf);
 
-    for (int i = 0; i < 50000; i++) {
+    for (int i = 0; i < 20000; i++) {
         vector<int> proposal_perm = permute_values();
         proposal_perms.push_back(proposal_perm);
         seen_permutation[perm_to_mask(proposal_perm)] = true;
@@ -266,14 +266,21 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
         //else
         //    cout << "contradiction\n";
     }
+    if (new_perms.size() == 0) {
+        new_perms = proposal_perms;
+        FILTER_END_SIZE = new_perms.size()+1;
+    }
+    cout << "before: " << new_perms.size() << endl;
     while (new_perms.size() >= 2 && new_perms.size() < FILTER_END_SIZE) {
-        
+        if (FILTER_END_SIZE > 2000)
+            FILTER_END_SIZE = 200;
         //if (new_perms.size() == FILTER_END_SIZE) {
             //cout << "here\n";
             int s = new_perms.size();
             for (int i = 0; i < s; i++) {
                 vector<int> prop = new_perms[i];
                 //int cnt = 0;
+                
                 for (int j = 0; j < 13; j++){
                     for (int k=j;k<13;k++){
                         if (j==k&&j!=0) continue;
@@ -326,6 +333,7 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
                         swap(prop[j],prop[k]);
                     }
                 }
+                
             }
             bool all_equal = true;
             for (int i = 1; i < (int)new_perms.size(); i++) {
@@ -344,10 +352,28 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
         //}
        
     }
-    //cout << new_perms.size() << endl;
+    cout << new_perms.size() << endl;
     proposal_perms.clear();
+    set<long long> ssss;
     for (int i = 0; i < (int)new_perms.size(); i++)
-        proposal_perms.push_back(new_perms[i]);
+        ssss.insert(perm_to_mask(new_perms[i]));
+    for (long long fdsa : ssss) {
+        proposal_perms.push_back(mask_to_perm(fdsa));
+    }
+    bool all_equal = true;
+            for (int i = 1; i < (int)new_perms.size(); i++) {
+                if (new_perms[i] != new_perms[i-1]){
+                    all_equal=false;
+                    break;
+                }
+            }
+            if (all_equal) {
+                filter_done = game_state->round_num;
+                filter_done_sd = showdown_tot;
+                perm_finalized=true;
+                final_perm=new_perms[0];
+                return;
+            }
     
 }
 
