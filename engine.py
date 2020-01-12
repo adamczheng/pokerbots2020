@@ -177,8 +177,10 @@ class Player():
                                       cwd=self.path, timeout=BUILD_TIMEOUT, check=False)
                 self.bytes_queue.put(proc.stdout)
             except subprocess.TimeoutExpired as timeout_expired:
-                print('Timed out waiting for', self.name, 'to build')
+                error_message = 'Timed out waiting for ' + self.name + ' to build'
+                print(error_message)
                 self.bytes_queue.put(timeout_expired.stdout)
+                self.bytes_queue.put(error_message.encode())
             except (TypeError, ValueError):
                 print(self.name, 'build command misformatted')
             except OSError:
@@ -194,6 +196,7 @@ class Player():
                 with server_socket:
                     server_socket.bind(('', 0))
                     server_socket.settimeout(CONNECT_TIMEOUT)
+                    server_socket.listen()
                     port = server_socket.getsockname()[1]
                     proc = subprocess.Popen(self.commands['run'] + [str(port)],
                                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
@@ -209,7 +212,6 @@ class Player():
                     # start a separate bot listening thread which dies with the program
                     Thread(target=enqueue_output, args=(proc.stdout, self.bytes_queue), daemon=True).start()
                     # block until we timeout or the player connects
-                    server_socket.listen()
                     client_socket, _ = server_socket.accept()
                     with client_socket:
                         client_socket.settimeout(CONNECT_TIMEOUT)
@@ -286,7 +288,7 @@ class Player():
                 game_log.append(error_message)
                 print(error_message)
                 self.game_clock = 0.
-            except BrokenPipeError:
+            except OSError:
                 error_message = self.name + ' disconnected'
                 game_log.append(error_message)
                 print(error_message)
