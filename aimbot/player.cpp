@@ -92,7 +92,7 @@ Player::Player() {
     seen_permutation[perm_to_mask(asdfasdf)] = true;
     proposal_perms.push_back(asdfasdf);
     //increased back to 200000 initial permutations - MD
-    for (int i = 0; i < 200000; i++) {
+    for (int i = 0; i < 50000; i++) {
         vector<int> proposal_perm = permute_values();
         proposal_perms.push_back(proposal_perm);
         seen_permutation[perm_to_mask(proposal_perm)] = true;
@@ -272,17 +272,23 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
     }
     cout << "before: " << new_perms.size() << endl;
     while (new_perms.size() >= 2 && new_perms.size() < FILTER_END_SIZE) {
+        int perm_prob = 10;
+        int swap_prob = 10;
         //increased thresholds - MD
-        if (FILTER_END_SIZE > 10000)
-            FILTER_END_SIZE = 500;
+        if (FILTER_END_SIZE > 10000){
+            FILTER_END_SIZE = 100;
+        }
+        if (FILTER_END_SIZE > 1000){
+            FILTER_END_SIZE = 100;
+            int perm_prob = 50;
+            int swap_prob = 50;
+        }
         //if (new_perms.size() == FILTER_END_SIZE) {
             //cout << "here\n";
             int s = new_perms.size();
             //random generator for swap - MD
             mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
             uniform_int_distribution<int> R(0,99);
-            int perm_prob = 50;
-            int swap_prob = 50;
             for (int i = 0; i < s; i++) {
                 if (R(rng) < perm_prob) continue;
                 vector<int> prop = new_perms[i];

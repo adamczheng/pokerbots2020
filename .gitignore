@@ -4,3 +4,4 @@ gamelog.txt
 __pycache__
 *.zip
 */cppbot
+*.swp
