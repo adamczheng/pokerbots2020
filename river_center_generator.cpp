@@ -252,20 +252,39 @@ void split_clusters() {
 	}
 }
 
+int isomorphize(int h1, int h2) {
+	int r1 = h1 / 4;
+	int r2 = h2 / 4;
+	int s1 = h1 % 4;
+	int s2 = h2 % 4;
+	if (r1 > r2) swap(r1, r2);
+	int suited = 0;
+	if (s1 == s2) suited = 1;
+	return (r1 * 100 + r2) * 10 + suited;
+}
+
 int main() {
+	/*set<int> ssss;
+	for (int i = 0; i < 52; i++)
+		for (int j = i+1; j < 52; j++)
+			ssss.insert(isomorphize(i, j));
+	cout << ssss.size() << endl;*/
+
 	InitTheEvaluator();
 	split_clusters();
+	map<int, bool> used;
 	bitset<52> bs;
 	for (int hole1 = 0; hole1 < 52; hole1++) {
 		bs[hole1] = 1;
 		for (int hole2 = 0; hole2 < 52; hole2++) {
 			if (bs[hole2]) continue;
 			bs[hole2] = 1;
-			
+			if (!used[isomorphize(hole1, hole2)]) {
 			vector<double> eqsum(8, 0.0);
-			
+			vector<int> tot(8, 0);
+			vector<int> my_tot(8, 0);
 			for (int b1 = 0; b1 < 52; b1++) {
-				cout << b1 << endl;
+				//cout << b1 << endl;
 				if(bs[b1]) continue;
 				for (int b2 = b1 + 1; b2 < 52; b2++) {
 					if (bs[b2]) continue;
@@ -279,18 +298,18 @@ int main() {
 								int my_value = GetHandValue(my_cards);
 								int opp_cards[7] = {b1+1, b2+1, b3+1, b4+1, b5+1, 0, 0};
 								for (int i = 0; i < 8; i++){
-									int tot = 0;
-									int my_tot = 0;
+
+
 									for (pair<int, int> &p : preflop_cluster[i]) {
 										if (bs[p.first] || bs[p.second]) continue;
 										opp_cards[5] = p.first + 1;
 										opp_cards[6] = p.second + 1;
 										int opp_value = GetHandValue(opp_cards);
-										if (my_value > opp_value) my_tot += 2;
-										else if (my_value == opp_value) my_tot += 1;
-										tot += 2;
+										if (my_value > opp_value) my_tot[i] += 2;
+										else if (my_value == opp_value) my_tot[i] += 1;
+										tot[i] += 2;
 									}
-									eqsum[i] += 1.0 * my_tot / tot;
+									//eqsum[i] += 1.0 * my_tot / tot;
 									//eq.start({deconvert(hole1)+deconvert(hole2), pf_cluster[i]}, boardmask);
 									//eq.wait();
 									//auto r = eq.getResults();
@@ -301,10 +320,13 @@ int main() {
 					}
 				}
 			}
+			for (int i = 0; i < 8; i++) eqsum[i] = 1.0 * my_tot[i] / tot[i];
 			cout << hole1 << ' ' << hole2 << ": ";
 			for (int i = 0; i < 8; i++)
-				cout << eqsum[i] << ' ';
+				cout << fixed << setprecision(4) << eqsum[i] << ' ';
 			cout << endl;
+			}
+			used[isomorphize(hole1, hole2)] = true;
 			bs[hole2] = 0;
 		}
 		bs[hole1] = 0;
