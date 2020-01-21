@@ -12,7 +12,7 @@ Aimbot: an if statement bot that attempts to determine permutation through parti
 Process gamelog: script to format a gamelog.txt file
 
 # Abstractions
-Card abstractions:
+## Card abstractions:
 
 abstractions folder: code for generating flop, turn, and river abstractions
 
@@ -28,7 +28,7 @@ Imperfect recall scheme: forget everything from the previous street
 
 Kevin Waugh isomorphisms for data encoding from https://github.com/kdub0/hand-isomorphism
 
-Planned action abstractions:
+## Planned action abstractions:
 
 Bet sizes: 1/2 pot, pot, 2x pot, all in
 
@@ -36,9 +36,9 @@ Raise sizes: pot, all in
 
 Other actions: check, fold
 
-Information set: action of current street, pot size and round pips, which bucket
+##  Information set: action of current street, pot size and round pips, which bucket
 
-CFR implementation: external sampling, reward by equity on showdown nodes
+## CFR implementation: external sampling, reward by equity on showdown nodes
 
 # Where we learned from
 https://github.com/mitpokerbots/lecture-notes-2020
