@@ -2,7 +2,8 @@
 //using namespace omp;
 using namespace std;
 /***** BEGIN KMEANS CODE *****/
-/*double euclidean_dist_squared(const Point &a, const Point &b) {
+typedef vector<double> Point;
+double euclidean_dist_squared(const Point &a, const Point &b) {
 	assert(a.size() == b.size());
 	double res = 0;
 	for (int d = 0; d < (int)a.size(); d++)
@@ -26,6 +27,7 @@ int findClusterID(vector<Point> &centers, Point pt)
 	}
 	return cid;
 }
+ofstream fout;
 void kmeans(vector<Point> &A, int K)
 {
 	mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
@@ -99,7 +101,10 @@ void kmeans(vector<Point> &A, int K)
 	// print out results
 	for(int i = 0; i<K; i++)
 	{
-		cout<<"Cluster Center "<<i<< " : ";
+		for (int d = 0; d < 8; d++)
+			fout << centers[i][d] << ' ';
+		fout << "\n";
+		/*cout<<"Cluster Center "<<i<< " : ";
 		cout<<"(" << centers[i][0];
 		for (int d = 1; d < (int)centers[i].size(); d++)
 			cout<<", "<<centers[i][d];
@@ -116,7 +121,7 @@ void kmeans(vector<Point> &A, int K)
 				cout << ") ";
 			}
 		}
-		cout<<endl;
+		cout<<endl;*/
 	}
 }
 /***** BEGIN 7-CARD-EVAL CODE *****/
@@ -269,20 +274,69 @@ int main() {
 		for (int j = i+1; j < 52; j++)
 			ssss.insert(isomorphize(i, j));
 	cout << ssss.size() << endl;*/
-
-	InitTheEvaluator();
+	ifstream fin("ochs.txt");
+	fout.open("centers.txt");
+	fout << fixed << setprecision(4);
+	vector<Point> A;
+	for (int i = 0; i < 200000; i++) {
+		Point p(8);
+		for (int j = 0; j < 8; j++)
+			fin >> p[j];
+		A.push_back(p);
+	}
+	cout << "Starting" << endl;
+	int K = 100;
+	kmeans(A, K);
+	/*InitTheEvaluator();
 	split_clusters();
 	map<int, bool> used;
-	bitset<52> bs;
-	for (int hole1 = 0; hole1 < 52; hole1++) {
+	bitset<53> bs;
+	auto seed = chrono::high_resolution_clock::now().time_since_epoch().count();
+	mt19937 rng(seed);
+	uniform_int_distribution<int> distribution(1, 52);
+	for (int iter = 0; iter < 200000; iter++) {
+		int a[7];
+		for (int i = 0; i < 7; i++) {
+			int x;
+			do {
+				x = distribution(rng);
+			} while(bs[x]);
+			a[i] = x;
+			bs[x] = 1;
+		}
+		int my_value = GetHandValue(a);
+		for (int i = 0; i < 8; i++){
+			int tot=0,my_tot=0;
+			for (pair<int, int> &p : preflop_cluster[i]) {
+				if (bs[p.first + 1] || bs[p.second + 1]) continue;
+				a[5] = p.first + 1;
+				a[6] = p.second + 1;
+				int opp_value = GetHandValue(a);
+				if (my_value > opp_value) my_tot += 2;
+				else if (my_value == opp_value) my_tot += 1;
+				tot += 2;
+			}
+			//eqsum[i] += 1.0 * my_tot / tot;
+			//eq.start({deconvert(hole1)+deconvert(hole2), pf_cluster[i]}, boardmask);
+			//eq.wait();
+			//auto r = eq.getResults();
+			//eqsum[i]+=r.equity[0];
+			fout << 1.0*my_tot/tot << ' ';
+		}
+		fout << "\n";
+		bs.reset();
+		//for (int i = 0; i < 7; i++) bs[a[i]] = 0;
+	}
+
+	/*for (int hole1 = 0; hole1 < 52; hole1++) {
 		bs[hole1] = 1;
 		for (int hole2 = 0; hole2 < 52; hole2++) {
 			if (bs[hole2]) continue;
 			bs[hole2] = 1;
 			if (!used[isomorphize(hole1, hole2)]) {
-			vector<double> eqsum(8, 0.0);
-			vector<int> tot(8, 0);
-			vector<int> my_tot(8, 0);
+			//vector<double> eqsum(8, 0.0);
+			//vector<int> tot(8, 0);
+			//vector<int> my_tot(8, 0);
 			for (int b1 = 0; b1 < 52; b1++) {
 				//cout << b1 << endl;
 				if(bs[b1]) continue;
@@ -297,40 +351,44 @@ int main() {
 								int my_cards[7] = {hole1 + 1, hole2 + 1, b1 + 1, b2 + 1, b3 + 1, b4 + 1, b5 + 1};
 								int my_value = GetHandValue(my_cards);
 								int opp_cards[7] = {b1+1, b2+1, b3+1, b4+1, b5+1, 0, 0};
+								
 								for (int i = 0; i < 8; i++){
 
-
+									int tot=0,my_tot=0;
 									for (pair<int, int> &p : preflop_cluster[i]) {
 										if (bs[p.first] || bs[p.second]) continue;
 										opp_cards[5] = p.first + 1;
 										opp_cards[6] = p.second + 1;
 										int opp_value = GetHandValue(opp_cards);
-										if (my_value > opp_value) my_tot[i] += 2;
-										else if (my_value == opp_value) my_tot[i] += 1;
-										tot[i] += 2;
+										if (my_value > opp_value) my_tot += 2;
+										else if (my_value == opp_value) my_tot += 1;
+										tot += 2;
 									}
 									//eqsum[i] += 1.0 * my_tot / tot;
 									//eq.start({deconvert(hole1)+deconvert(hole2), pf_cluster[i]}, boardmask);
 									//eq.wait();
 									//auto r = eq.getResults();
 									//eqsum[i]+=r.equity[0];
+									fout << 1.0*my_tot/tot << ' ';
 								}
+								fout << "\n";
 							}
 						}
 					}
 				}
 			}
-			for (int i = 0; i < 8; i++) eqsum[i] = 1.0 * my_tot[i] / tot[i];
-			cout << hole1 << ' ' << hole2 << ": ";
-			for (int i = 0; i < 8; i++)
-				cout << fixed << setprecision(4) << eqsum[i] << ' ';
-			cout << endl;
+			//for (int i = 0; i < 8; i++) eqsum[i] = 1.0 * my_tot[i] / tot[i];
+			//cout << hole1 << ' ' << hole2 << ": ";
+			//for (int i = 0; i < 8; i++)
+			//	cout << fixed << setprecision(4) << eqsum[i] << ' ';
+			//cout << endl;
+			cout << hole1 << ' ' << hole2 << "\n";
 			}
 			used[isomorphize(hole1, hole2)] = true;
 			bs[hole2] = 0;
 		}
 		bs[hole1] = 0;
-	}
+	}*/
 	//eq.start({"AK", "QQ"});
     //eq.wait();
     //auto r = eq.getResults();
