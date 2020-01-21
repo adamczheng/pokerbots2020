@@ -56,8 +56,13 @@ external sampling, reward by equity on showdown nodes
 
 # Where we learned from
 https://github.com/mitpokerbots/lecture-notes-2020
+
 http://modelai.gettysburg.edu/2013/cfr/
+
 https://www.pokernews.com/strategy/artificial-intelligence-hold-em-1-23152.htm
+
 http://poker-ai.org/phpbb/
+
 http://poker.cs.ualberta.ca/
+
 https://github.com/pandaant/poker-cfrm
