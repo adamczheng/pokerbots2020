@@ -16,6 +16,17 @@ an if statement bot that attempts to determine permutation through particle filt
 ### Process gamelog:
 script to format a gamelog.txt file
 
+# Permutation Learning
+Our week 1 strategy (which is still basically the case) was to generate a lot of permutations (50,000) from the prior (0.25 geometric distribution) and then particle filter over showdowns we see. It drops really fast and could drop to 0 from pretty high numbers (>200) although unlikely. If we ever drop below the threshold (200), we go through each permutation and try each permutation with swap distance of <= 1 to see if they follow showdown rules. If they do we add them to the list. If our list becomes entirely one permutation, then we're done. 
+
+Before the end of week 2 we decided that moving an index i->j performs slightly better than swap(i,j) on average, although there would be double the permutations with distance 1 and its implementation is slower, so we didn't do it.
+
+For playing, before 5 showdowns, we assume the permutation is 23456789TJQKA, but after 5 showdowns we randomly select from remaining candidate.
+
+Against check-call bot, we determine the permutation about 30% of the time with our week 1 strategy, although we get a good idea of the permutation much more often. It sometimes takes too long (if we never generate the right permutation) so we don't allow this part of the program to exceed 20-25 seconds.
+
+Currently, we're trying to implement Metropolis Hasting to see if it yields better results.
+
 # Abstractions
 ## Card abstractions:
 
