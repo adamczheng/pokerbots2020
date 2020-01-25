@@ -1,10 +1,8 @@
-/**
- * Simple example pokerbot, written in C++.
- */
 #include "player.hpp"
 #include <bits/stdc++.h>
 using namespace std;
 
+const int NUM_LINES_STATEGY = 1059266;
 // LUT
 int HR[32487834];
 int GetHandValue(array<int, 7> cards) {
@@ -16,6 +14,8 @@ int GetHandValue(array<int, 7> cards) {
     p = HR[p + cards[5] + 1];
     return HR[p + cards[6] + 1];
 }
+
+int seen_pot_sizes[500];
 
 class Buckets {
 	string pf_cluster[8] = { "23s,24s,25s,26s,27s,34s,35s,36s,37s,45s,46s,32o,43o,42o,54o,53o,52o,65o,64o,63o,62o,74o,73o,72o,83o,82o",
@@ -317,7 +317,7 @@ public:
 			assert(river_centers.size());
 			int best_center = 0;
 			double best_dist = GetSquaredEuclideanDist(OCHS, river_centers[0]);
-			for (int i = 1; i < river_centers.size(); i++) {
+			for (int i = 1; i < (int)river_centers.size(); i++) {
 				double cur_dist = GetSquaredEuclideanDist(OCHS, river_centers[i]);
 				if (cur_dist < best_dist) {
 					best_dist = cur_dist;
@@ -367,7 +367,6 @@ vector<int> permute_values() {
         prop_perm.push_back(orig_perm[pop_i]);
         orig_perm.erase(orig_perm.begin() + pop_i);
     }
-    //reverse(prop_perm.begin(),prop_perm.end());
     return prop_perm;
 }
 int preflop_delta;
@@ -380,9 +379,8 @@ bool perm_finalized;
 vector<pair<vector<string>,vector<string> > > showdown_rules;
 bool quit_chasing;
 int all_in_pre_cnt;
-
 Buckets* bucketer;
-map<pair<int, array<int, 2> >, vector<double> > strategy_map[2][6][200];
+map<pair<int, int >, vector<pair<pair<char,int>, double> > > strategy_map[6][200][6];
 mt19937 rng;
 /**
  * Called when a new game starts. Called exactly once.
@@ -393,33 +391,37 @@ Player::Player()
 	rng.seed(seed);
     memset(HR, 0, sizeof(HR));
     FILE* hrfin = fopen("handranks.dat", "rb");
-    size_t bytesread = fread(HR, sizeof(HR), 1, hrfin);
+    fread(HR, sizeof(HR), 1, hrfin);
     fclose(hrfin);
-    ifstream fin("324k.txt");
+    ifstream fin("dump5.txt");
     string line;
     getline(fin, line);
-    for (int i = 1; i < 554276; i++) {
+    for (int i = 1; i < NUM_LINES_STATEGY; i++) {
         getline(fin, line);
         istringstream ss(line);
         int street, infoset, player, pot;
-        array<int, 2> pips;
-        ss >> street >> infoset >> player >> pot >> pips[0] >> pips[1];
+        int button;
+        int pot_odd_round;
+        //array<int, 2> pips;
+        ss >> street >> infoset /*>> player*/ >> button>> pot >> pot_odd_round;//pips[0] >> pips[1];
+        seen_pot_sizes[pot] = 1;
         char colon_dummy;
         ss >> colon_dummy;
-        vector<double> strategy;
-        double p;
-        while (ss >> p) {
-            strategy.push_back(p);
+        vector<pair<pair<char,int>,double> > strategy;
+        char type;
+        while (ss >> type) {
+            int x;
+            double p;
+            ss >> x >> p;
+            strategy.push_back({{type, x}, p});
         }
-        strategy.pop_back();
-        strategy_map[player][street][infoset][make_pair(pot, pips)] = strategy;
+        strategy_map/*[player]*/[street][infoset][button][make_pair(pot, pot_odd_round)] = strategy;
     }
     fin.close();
     bucketer = new Buckets();
     quit_chasing = false;
+    perm_finalized = false;
 	all_in_pre_cnt = 0;
-    //string ranks="23456789TJQKA";
-    //string suits="shdc";
     vector<int> asdfasdf = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     seen_permutation[perm_to_mask(asdfasdf)] = true;
     proposal_perms.push_back(asdfasdf);
@@ -467,8 +469,11 @@ int flop_tot, turn_tot, river_tot, showdown_tot;
 int my_btn_vpip, opp_btn_vpip;
 int my_bb_vpip, opp_bb_vpip;
 
-pair<int, array<int, 2> > prev;
-
+//pair<int, array<int, 2> > prev;
+//RoundState* imagined_round_state;
+//array<int, 2> imagined_pips;
+//array<int, 2> imagined_stacks;
+int imagined_pot;
 /**
  * Called when a new round starts. Called NUM_ROUNDS times.
  *
@@ -483,25 +488,29 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
     //int round_num = game_state->round_num;  // the round number from 1 to NUM_ROUNDS
     //std::array<std::string, 2> my_cards = round_state->hands[active];  // your cards
     //bool big_blind = (bool) active;  // true if you are the big blind
+    int street = round_state->street;  // 0, 3, 4, or 5 representing pre-flop, flop, river, or turn respectively
     big_blind = (bool) active;  // true if you are the big blind
     all_in_pre = false;
     opp_3b_size = 2;
     opp_4b_size = 1;
     on_check_fold = false;
-    int street = round_state->street;
     assert(street == 0);
 	if (showdown_tot+all_in_pre_cnt >= 5){
-    string ranks = "23456789TJQKA";
-    mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-	uniform_int_distribution<int> R(0,proposal_perms.size()-1);
-    vector<int> guess = proposal_perms[R(rng)];
-    if (perm_finalized) {
-        guess=final_perm;
-    }
-    for (int i = 0; i < 13; i++) {
-        rank_map[ranks[guess[i]]]=i+2;
-    }
+        string ranks = "23456789TJQKA";
+        mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
+        uniform_int_distribution<int> R(0,proposal_perms.size()-1);
+        vector<int> guess = proposal_perms[R(rng)];
+        if (perm_finalized) {
+            guess=final_perm;
+        }
+        for (int i = 0; i < 13; i++) {
+            rank_map[ranks[guess[i]]]=i+2;
+        }
 	}
+    //imagined_round_state = new RoundState(round_state->button, street, round_state->pips, round_state->stacks, round_state->hands, board_cards, NULL);
+    //imagined_pips = {1, 2};
+    //imagined_stacks = {199, 198};
+    imagined_pot = 4;
 }
 
 void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int active){
@@ -530,19 +539,24 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
         vector<int> opp_sd_cards;
         assert(my_hand.size() == 7);
         string ranks="23456789TJQKA";
-        map<char,char>mpp;
+        map<char,char> mpp;
         // guess =  0  1  2 3 4 5 6 7 8 9 11 10 12
         // ranks =  2  3  4 5 6 7 8 9 T J Q   K  A
         // rg    =  2  3  4 5 6 7 8 9 T J K   Q  A
         for (int i = 0; i < 13; i++) {
             mpp[ranks[i]]=ranks[proposal_perm[i]];
-            //cout << ranks[i] << " maps to " << ranks[proposal_perm[i]] << endl;
         }
         for (string &c : my_hand) {
-            my_sd_cards.push_back(hand_to_int(""+mpp[c[0]]+c[1]));
+            string tmp = "";
+            tmp += mpp[c[0]];
+            tmp += c[1];
+            my_sd_cards.push_back(hand_to_int(tmp));
         }
         for (string &c : opp_hand) {
-            opp_sd_cards.push_back(hand_to_int(""+mpp[c[0]]+c[1]));
+            string tmp = "";
+            tmp += mpp[c[0]];
+            tmp += c[1];
+            opp_sd_cards.push_back(hand_to_int(tmp));
         }
 
         array<int, 7> h;
@@ -595,7 +609,6 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
                         if (works){
                         for (int ii = 0; ii < 13; ii++) {
                             mpp[ranks[ii]]=ranks[prop[ii]];
-                            //cout << ranks[i] << " maps to " << ranks[proposal_perm[i]] << endl;
                         }
                         for (auto it : showdown_rules) {
                             
@@ -603,10 +616,16 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
                             vector<int> opp_sd_cards;
                             assert(my_hand.size() == 7);
                             for (string &c : it.first) {
-                                my_sd_cards.push_back(hand_to_int(""+mpp[c[0]]+c[1]));
+                                string tmp = "";
+                                tmp += mpp[c[0]];
+                                tmp += c[1];
+                                my_sd_cards.push_back(hand_to_int(tmp));
                             }
                             for (string &c : it.second) {
-                                opp_sd_cards.push_back(hand_to_int(""+mpp[c[0]]+c[1]));
+                                string tmp = "";
+                                tmp += mpp[c[0]];
+                                tmp += c[1];
+                                opp_sd_cards.push_back(hand_to_int(tmp));
                             }
 
                             array<int, 7> h;
@@ -786,15 +805,59 @@ void Player::handle_round_over(GameState* game_state, TerminalState* terminal_st
     }
 }
 
-int SampleStrategy(const vector<double>& s) {
-    std::uniform_real_distribution<double> distribution(0, 1);
+int SampleStrategy(const vector<pair<pair<char,int>,double> >& s) {
+    // fold threshold + purification
+    const int FOLD_THRESHOLD = 0.2; 
+    double sum = 0;
+    double pfold = 0, pcall = 0, pcheck = 0, pbet = 0;
+    int foldi = -1, calli = -1, checki = -1;
+    for (int i = 0; i < (int)s.size(); i++) {
+        
+        if (s[i].first.first == 'F' && s[i].second > FOLD_THRESHOLD) {
+            return i;
+        }
+        if (s[i].first.first == 'F') {
+            pfold += s[i].second;
+            foldi = i;
+        }
+        else if (s[i].first.first == 'X') {
+            pcheck += s[i].second;
+            checki = i;
+        }
+        else if (s[i].first.first == 'C') {
+            pcall += s[i].second;
+            calli = i;
+        }
+        if (s[i].first.first == 'B' || s[i].first.first == 'R') {
+            sum += s[i].second;
+            pbet += s[i].second;
+        }
+    }
+    if (pfold >= max({pcall, pcheck, pbet})) {
+        return foldi;
+    } else if (pcall >= max({pfold, pcheck, pbet})) {
+        return calli;
+    } else if (pcheck >= max({pfold, pcall, pbet})) {
+        return checki;
+    }
+    std::uniform_real_distribution<double> distribution(0, sum);
     double r = distribution(rng);
     double acc = 0;
     for (int i = 0; i < (int)s.size(); i++) {
-        acc += s[i];
+        if (s[i].first.first == 'B' || s[i].first.first == 'R') acc += s[i].second;
         if (r < acc) return i;
     }
-    assert(0);
+    cout << "unlikely occurrence when sampling strategy" << endl;
+    return (int)s.size() - 1;
+}
+
+int pot_odds_bucket(double odds) {
+	if (odds * 6 < 1) return 0;
+	if (odds < 0.25) return 1;
+	if (odds * 3 < 1) return 2;
+	if (odds < 0.4) return 3;
+	if (odds * 9 < 4) return 4;
+	return 5;
 }
 
 
@@ -837,15 +900,9 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     int my_stack = round_state->stacks[active];  // the number of chips you have remaining
     int opp_stack = round_state->stacks[1-active];  // the number of chips your opponent has remaining
     int continue_cost = opp_pip - my_pip;  // the number of chips needed to stay in the pot
-    int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
+    //int my_contribution = STARTING_STACK - my_stack;  // the number of chips you have contributed to the pot
     int opp_contribution = STARTING_STACK - opp_stack;  // the number of chips your opponent has contributed to the pot
     int pot = 2 * opp_contribution;
-    //if (RAISE_ACTION_TYPE & legal_actions)
-    //{
-    //    std::array<int, 2> raise_bounds = round_state->raise_bounds();  // the smallest and largest numbers of chips for a legal bet/raise
-    //    int min_cost = raise_bounds[0] - my_pip;  // the cost of a minimum bet/raise
-    //    int max_cost = raise_bounds[1] - my_pip;  // the cost of a maximum bet/raise
-    //}
     if (street == 3 && pot == 400) {
         all_in_pre = true;
     }
@@ -855,79 +912,136 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
     if (on_check_fold) {
         //return CheckAction();
     }
-    if (pot == 400) {
+    if (pot == 400 && my_pip == opp_pip) {
         return CheckAction();
     }
-    //auto TIME = clock();
     // (B-x)(1+A)/(B-A)/(1+x)
-    // keep track of imaginary pips, imaginary round state, whether our new actions are legal
-    //double opp_sizing = 1.0*(opp_pip-my_pip)/(pot - (opp_pip-my_pip));
-    vector<double> s = strategy_map[active][street][bucketer->GetBucket(street, my_hand, board)][make_pair(pot, round_state->pips)];
-    //cout << "Fetch time: " << 1000.0*(clock()-TIME) / CLOCKS_PER_SEC << "ms" << endl;
-    if (s.size() == 0) {
-        cout << active << ' ' << street << ' ' << bucketer->GetBucket(street, my_hand, board) << ' ' << pot << ' ' << round_state->pips[0] << ' ' << round_state->pips[1] << endl;
-    }
-    vector<Action> a;
-    if ((legal_action_mask & RAISE_ACTION_TYPE) && round_state->button < 4) {
-        int min_raise = round_state->raise_bounds()[0];
-        int max_raise = round_state->raise_bounds()[1];
-        bool is_bet = (continue_cost == 0);
-        if (is_bet) {
-            for (int i = 0; i < NUM_BET_SIZES; i++) {
-                int delta = continue_cost + (int)(BET_SIZES[i] * pot);
-                int sizing = my_pip + delta;
-                if (min_raise <= sizing && sizing < max_raise) {
-                    //history.push_back({ 'R', sizing });
-                    a.push_back(RaiseAction(sizing));
-                    //dump_strategy(state->children[child_id++], history);
-                    //history.pop_back();
-                }
-                if (BET_SIZES[i] > 990) {
-                    //history.push_back({ 'R', max_raise });
-                    a.push_back(RaiseAction(max_raise));
-                    //dump_strategy(state->children[child_id++], history);
-                    //history.pop_back();
-                }
+    double opp_sizing = 1.0*(opp_pip-my_pip)/(pot - 2*(opp_pip-my_pip));
+    double interpreted_sizing = 0;
+    int lb = -1, ub = -1;
+    if (my_pip == 0) {
+        for (int i = 0; i < NUM_BET_SIZES; i++) {
+            if (BET_SIZES[i] <= opp_sizing)
+                lb = i;
+            if (BET_SIZES[i] >= opp_sizing) {
+                ub = i;
+                break;
             }
         }
-        else {
-            for (int i = 0; i < NUM_RAISE_SIZES; i++) {
-                int delta = continue_cost + (int)(RAISE_SIZES[i] * pot);
-                int sizing = my_pip + delta;
-                if (min_raise <= sizing && sizing < max_raise) {
-                    //history.push_back({ 'R', sizing });
-                    a.push_back(RaiseAction(sizing));
-                    //dump_strategy(state->children[child_id++], history);
-                    //history.pop_back();
-                }
-                if (RAISE_SIZES[i] > 990) {
-                    a.push_back(RaiseAction(max_raise));
-                    //history.push_back({ 'R', max_raise });
-                    //dump_strategy(state->children[child_id++], history);
-                    //history.pop_back();
-                }
+    } else {
+        for (int i = 0; i < NUM_RAISE_SIZES; i++) {
+            if (RAISE_SIZES[i] <= opp_sizing)
+                lb = i;
+            if (RAISE_SIZES[i] >= opp_sizing) {
+                ub = i;
+                break;
             }
         }
     }
-    if (legal_action_mask & CHECK_ACTION_TYPE) {
-        //history.push_back({ 'X', 0 });
-        a.push_back(CheckAction());
-        //dump_strategy(state->children[child_id++], history);
-        //history.pop_back();
+    double A = 0;
+    if (lb != -1) A = RAISE_SIZES[lb];
+    // all-in interpret fix
+    if (A > 990) {
+        int oldpot = pot - (opp_contribution - opp_pip)*2;
+        int opp_new_pip = 200 - oldpot/2;
+        A = 1.0* (opp_new_pip-my_pip)/(400 - 2*(opp_new_pip-my_pip));
     }
+    // #actions leaves our tree
+    if (round_state->button > 4) {
+        A = 0;
+    }
+    double B = RAISE_SIZES[ub];
+    // all-in interpret fix
+    if (B > 990 || round_state->button > 4) {
+        int oldpot = pot - (opp_contribution - opp_pip)*2;
+        int opp_new_pip = 200 - oldpot/2;
+        B = 1.0* (opp_new_pip-my_pip)/(400 - 2*(opp_new_pip-my_pip));
+    }
+    if (B-A<0.001) interpreted_sizing = A;
     else {
-        assert(legal_action_mask & CALL_ACTION_TYPE);
-        assert(legal_action_mask & FOLD_ACTION_TYPE);
-        a.push_back(CallAction());
-        a.push_back(FoldAction());
-        //history.push_back({ 'C', 0 });
-        //dump_strategy(state->children[child_id++], history);
-        //history.pop_back();
-        //history.push_back({ 'F', 0 });
-        //dump_strategy(state->children[child_id++], history);
-        //history.pop_back();
+        double PA = (B-opp_sizing)*(1+A)/(B-A)/(1+opp_sizing);
+        uniform_real_distribution<double> rdist(0,1);
+        if (rdist(rng) < PA) interpreted_sizing = A;
+        else interpreted_sizing = B;
     }
-    int i = SampleStrategy(s);
-    return a[i];
-    //assert(0);
+    imagined_pot += (int)(2 * imagined_pot * interpreted_sizing + 0.0001);
+    int imagined_pot_odds = pot_odds_bucket(interpreted_sizing / (1 + 2 * interpreted_sizing));
+    int card_abs = bucketer->GetBucket(street, my_hand, board);
+    // something our CFR strategy doesn't consider
+    if (round_state->button > 4) {
+        cout << "roundstatebutton exceeded 4" << endl;
+        assert(imagined_pot == 400 || interpreted_sizing == 0);
+    }
+    // in the case of opening the pot
+    if (street == 0 && round_state->button == 0) {
+        imagined_pot = 4;
+        imagined_pot_odds = 2;
+    }
+    // if they raise/bet that we interpret as a check, check whether we interpret as a check-back/call vs an opening check
+    if (imagined_pot_odds == 0) {
+        bool open_check = (street == 0 && round_state->button == 1) || (street > 0 && round_state->button == 2);
+        if (!open_check) {
+            return CallAction();
+        }
+    }
+    vector<pair<pair<char,int>,double> > strat = strategy_map[street][card_abs][round_state->button][make_pair(imagined_pot, imagined_pot_odds)];
+    // something our CFR strategy never considered
+    if (strat.size() == 0) {
+        cout << "this wasn't supposed to happen" << endl;
+        cout << street << ' ' << card_abs << ' ' << round_state->button << ' ' << imagined_pot << ' ' << imagined_pot_odds << endl;
+    }
+
+    auto bet_to_pip = [legal_action_mask, my_pip, opp_pip](int p, int min_raise, int max_raise) {
+        if (p == opp_pip) {
+            if (opp_pip == my_pip) {
+                return CheckAction();
+            }
+            return CallAction();
+        }
+        if (min_raise <= p && p <= max_raise) {
+            return RaiseAction(p);
+        }
+        else if (p < min_raise) {
+            return RaiseAction(min_raise);
+        }
+        else if (p > max_raise) {
+            return RaiseAction(max_raise);
+        }
+        assert(0);
+    };
+    int i = SampleStrategy(strat);
+    if (strat[i].first.first == 'X') {
+        if (legal_action_mask & CHECK_ACTION_TYPE) return CheckAction();
+        return CallAction();
+    } else if (strat[i].first.first == 'C') {
+        return CallAction();
+    } else if (strat[i].first.first == 'F') {
+        return FoldAction();
+    } else if (strat[i].first.first == 'B') {
+        imagined_pot += (int)(2 * imagined_pot * BET_SIZES[strat[i].first.second] + 0.0001);
+        if (legal_action_mask & RAISE_ACTION_TYPE) {
+            int min_raise = round_state->raise_bounds()[0];
+            int max_raise = round_state->raise_bounds()[1];
+            int delta = continue_cost + (int)(BET_SIZES[strat[i].first.second] * pot);
+            int sizing = my_pip + delta;
+            return bet_to_pip(sizing, min_raise, max_raise);
+        } else {
+            if (legal_action_mask & CHECK_ACTION_TYPE) return CheckAction();
+            return CallAction();
+        }
+    } else {
+        assert(strat[i].first.first == 'R');
+        imagined_pot += (int)(2 * imagined_pot * RAISE_SIZES[strat[i].first.second] + 0.0001);
+        if (legal_action_mask & RAISE_ACTION_TYPE) {
+            int min_raise = round_state->raise_bounds()[0];
+            int max_raise = round_state->raise_bounds()[1];
+            int delta = continue_cost + (int)(RAISE_SIZES[strat[i].first.second] * pot);
+            int sizing = my_pip + delta;
+            return bet_to_pip(sizing, min_raise, max_raise);
+        } else {
+            if (legal_action_mask & CHECK_ACTION_TYPE) return CheckAction();
+            return CallAction();
+        }
+    }
+    assert(0);
 }

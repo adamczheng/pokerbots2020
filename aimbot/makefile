@@ -2,7 +2,7 @@ SOURCES = main.cpp player.cpp skeleton/runner.cpp skeleton/states.cpp skeleton/a
 HEADERS = player.hpp skeleton/bot.hpp skeleton/runner.hpp skeleton/states.hpp skeleton/actions.hpp
 
 CXX = g++
-CXXFLAGS = -Wall -std=c++11 -O2
+CXXFLAGS = -Wall -std=c++11 -O3
 LDLIBS = -lboost_system -lpthread OMPEval/lib/ompeval.a
 
 cppbot: $(SOURCES) $(HEADERS)

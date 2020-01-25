@@ -1000,6 +1000,56 @@ vector<double> GetHistogram(int street, array<int, 2> hand, array<int, 5> board)
 			bucket[i] /= sum;
 		return bucket;
 	}
+  vector<double> GetHistogramMC(int street, array<int, 2> hand, array<int, 5> board) {
+		assert(street == 3 || street == 4);
+		bitset<52> used;
+		used[hand[0]] = 1;
+		used[hand[1]] = 1;
+		for (int i = 0; i < street; i++)
+			used[board[i]] = 1;
+		uint8_t cards[7];
+		cards[0] = hand[0];
+		cards[1] = hand[1];
+		cards[2] = board[0];
+		cards[3] = board[1];
+		cards[4] = board[2];
+    auto seed = chrono::high_resolution_clock::now().time_since_epoch().count();
+	  mt19937 rng(seed);
+    uniform_int_distribution<int> distribution(0, 51);
+		vector<double> bucket(51, 0.0);
+		if (street == 3) {
+      int my_strength = GetHandValue()
+			for (int iter = 0; iter < 1000; iter++) {
+        do {
+          cards[5] = distribution(rng);
+        } while (used[cards[5]]);
+        used[cards[5]] = 1;
+        do {
+          cards[6] = distribution(rng);
+        } while (used[cards[6]]);
+        do {
+          cards[0]
+        }
+        used[cards[5]] = 0;
+      }
+		}
+		else {
+			// street == 4
+			cards[5] = board[3];
+			for (int i = 0; i < 52; i++) {
+				if (used[i]) continue;
+				cards[6] = i;
+				hand_index_t hit = hand_index_last(&indexer[3], cards);
+				bucket[(int)(ehslp->raw(3, hit) * 50)] += 1;
+			}
+		}
+		double sum = 0;
+		for (int i = 0; i < 51; i++)
+			sum += bucket[i];
+		for (int i = 0; i < 51; i++)
+			bucket[i] /= sum;
+		return bucket;
+	}
 
 double EMD(const vector<double> &a, const vector<double> &b) {
 	assert(a.size() == b.size());

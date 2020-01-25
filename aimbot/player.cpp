@@ -11,7 +11,7 @@
 #include "OMPEval/omp/EquityCalculator.h"
 using namespace std;
 using namespace omp;
-int FILTER_END_SIZE = 2000;
+const int FILTER_END_SIZE = 200;
 // permutation generator
 map<long long, bool> seen_permutation;
 long long perm_to_mask(const vector<int> &perm) {
@@ -35,19 +35,6 @@ vector<int> permute_values() {
     vector<int> prop_perm;
     mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
     geometric_distribution<int> distribution(0.25);
-    for (int i = 0; i < 13; i++) {
-        int pop_i = orig_perm.size() - 1 - (distribution(rng) % orig_perm.size());
-        prop_perm.push_back(orig_perm[pop_i]);
-        orig_perm.erase(orig_perm.begin() + pop_i);
-    }
-    //reverse(prop_perm.begin(),prop_perm.end());
-    return prop_perm;
-}
-
-vector<int> permute_slightly(vector<int> orig_perm) {
-    vector<int> prop_perm;
-    mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-    geometric_distribution<int> distribution(0.95);
     for (int i = 0; i < 13; i++) {
         int pop_i = orig_perm.size() - 1 - (distribution(rng) % orig_perm.size());
         prop_perm.push_back(orig_perm[pop_i]);
@@ -85,13 +72,18 @@ vector<int> final_perm;
 bool perm_finalized;
 vector<pair<vector<string>,vector<string> > > showdown_rules;
 HandEvaluator eval;
+bool quit_chasing;
+int all_in_pre_cnt;
+
 Player::Player() {
+	quit_chasing = false;
+	all_in_pre_cnt = 0;
     //string ranks="23456789TJQKA";
     //string suits="shdc";
     vector<int> asdfasdf = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12};
     seen_permutation[perm_to_mask(asdfasdf)] = true;
     proposal_perms.push_back(asdfasdf);
-    //increased back to 200000 initial permutations - MD
+
     for (int i = 0; i < 50000; i++) {
         vector<int> proposal_perm = permute_values();
         proposal_perms.push_back(proposal_perm);
@@ -191,6 +183,7 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
     on_check_fold = false;
     int street = round_state->street;
     assert(street == 0);
+	if (showdown_tot+all_in_pre_cnt >= 5){
     string ranks = "23456789TJQKA";
     mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
 	uniform_int_distribution<int> R(0,proposal_perms.size()-1);
@@ -201,12 +194,13 @@ void Player::handle_new_round(GameState* game_state, RoundState* round_state, in
     for (int i = 0; i < 13; i++) {
         rank_map[ranks[guess[i]]]=i+2;
     }
+	}
 }
 
 int extras;
 
 void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int active){
-    if (perm_finalized) return;
+    if (perm_finalized || quit_chasing || game_state->game_clock < 10.0) return;
     RoundState* previous_state = (RoundState*) terminal_state->previous_state;  // RoundState before payoffs
     int street = previous_state->street;  // 0, 3, 4, or 5 representing when this round ended
     std::array<std::string, 2> my_cards = previous_state->hands[active];  // your cards
@@ -266,39 +260,22 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
         //else
         //    cout << "contradiction\n";
     }
-    if (new_perms.size() == 0) {
-        new_perms = proposal_perms;
-        FILTER_END_SIZE = new_perms.size()+1;
-    }
-    cout << "before: " << new_perms.size() << endl;
-    while (new_perms.size() >= 2 && new_perms.size() < FILTER_END_SIZE) {
-        int perm_prob = 10;
-        int swap_prob = 10;
-        //increased thresholds - MD
-        if (FILTER_END_SIZE > 10000){
-            FILTER_END_SIZE = 100;
-        }
-        if (FILTER_END_SIZE > 1000){
-            FILTER_END_SIZE = 100;
-            int perm_prob = 50;
-            int swap_prob = 50;
-        }
+	if (new_perms.size() == 0) {
+		quit_chasing = true;
+		return;
+	}
+	auto TIME= clock();
+    while (new_perms.size() >= 2 && new_perms.size() < FILTER_END_SIZE && 1.0*(clock()-TIME)/CLOCKS_PER_SEC<5.0) {
+        
         //if (new_perms.size() == FILTER_END_SIZE) {
             //cout << "here\n";
             int s = new_perms.size();
-            //random generator for swap - MD
-            mt19937 rng(std::chrono::high_resolution_clock::now().time_since_epoch().count());
-            uniform_int_distribution<int> R(0,99);
             for (int i = 0; i < s; i++) {
-                if (R(rng) < perm_prob) continue;
                 vector<int> prop = new_perms[i];
                 //int cnt = 0;
-                
                 for (int j = 0; j < 13; j++){
                     for (int k=j;k<13;k++){
                         if (j==k&&j!=0) continue;
-                        //only swap with some probability - MD
-                        if (R(rng) < swap_prob) continue;
                         //cnt++;
                         //if (cnt==10)break;
                         swap(prop[j],prop[k]);
@@ -348,7 +325,6 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
                         swap(prop[j],prop[k]);
                     }
                 }
-                
             }
             bool all_equal = true;
             for (int i = 1; i < (int)new_perms.size(); i++) {
@@ -367,28 +343,10 @@ void handle_showdowns(GameState* game_state, TerminalState* terminal_state, int 
         //}
        
     }
-    cout << new_perms.size() << endl;
+    //cout << new_perms.size() << endl;
     proposal_perms.clear();
-    set<long long> ssss;
     for (int i = 0; i < (int)new_perms.size(); i++)
-        ssss.insert(perm_to_mask(new_perms[i]));
-    for (long long fdsa : ssss) {
-        proposal_perms.push_back(mask_to_perm(fdsa));
-    }
-    bool all_equal = true;
-            for (int i = 1; i < (int)new_perms.size(); i++) {
-                if (new_perms[i] != new_perms[i-1]){
-                    all_equal=false;
-                    break;
-                }
-            }
-            if (all_equal) {
-                filter_done = game_state->round_num;
-                filter_done_sd = showdown_tot;
-                perm_finalized=true;
-                final_perm=new_perms[0];
-                return;
-            }
+        proposal_perms.push_back(new_perms[i]);
     
 }
 
@@ -471,6 +429,7 @@ void Player::handle_round_over(GameState* game_state, TerminalState* terminal_st
     }
     if (all_in_pre) {
         all_in_pre_delta += my_delta;
+		all_in_pre_cnt++;
     }
     if (street == 0 && !on_check_fold) {
        preflop_delta += my_delta;
@@ -890,7 +849,7 @@ Action Player::get_action(GameState* game_state, RoundState* round_state, int ac
         return CheckAction();
     }
     if (((NUM_ROUNDS - game_state->round_num + 1)*3 + 1) / 2 < game_state->bankroll) {
-        //on_check_fold = true;
+        on_check_fold = true;
     }
     if (on_check_fold) {
         return check_fold(game_state, round_state, active);
