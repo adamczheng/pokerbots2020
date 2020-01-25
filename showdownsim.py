@@ -3,6 +3,7 @@ import eval7
 import random
 import scipy
 import scipy.stats
+import collections
 
 def permute_values():
     '''
@@ -181,11 +182,102 @@ def compatible(p, board_state):
     #p is permutation, s is showdown
     return showdown(p, board_state) == showdown(actual_perm, board_state)
 
+'''
+def new_candidate(p):
+    #generate random indices i, j
+    i = np.random.randint(0,13)
+    j = np.random.randint(0,13)
+    #reinsert i in position j
+    if i == j:
+        return p
+    if i < j:
+        return p[:i]+p[i+1:j]+p[i:i+1]+p[j:]
+    return p[:j]+p[i:i+1]+p[j:i]+p[i+1:]
+'''
+def new_candidate(p):
+    #generate random indices i, j
+    i = np.random.randint(0,13)
+    j = np.random.randint(0,13)
+    p[i], p[j] = p[j], p[i]
+    return p
 
-def permutation_deducer():
+
+def fail_penalty(fails):
+    return 1
+    #return 0.1 ** fails
+
+def mh_showdown(showdowns,curr,curr_fails,increment=1):
     '''
-    tries to find the correct permutation.
+    #initialize node
+    curr = list(range(13))
+    curr_prior = perm_prob(curr)
+    #dictionary of probabilities
+    visits = collections.defaultdict(int)
     '''
+    visits = collections.defaultdict(int)
+    curr_prior = perm_prob(curr)
+    #for iterations
+    NUM_ITERATIONS = 5000
+    FAILED_OKAY = 100000
+
+    #update fails
+    curr_fails += not compatible(curr, showdowns[-1])
+    for i in range(NUM_ITERATIONS):
+        #propose new candidate
+        q = new_candidate(curr)
+        #compute showdown ratio
+        q_failed = 0
+        for s in showdowns:
+            if q_failed > FAILED_OKAY:
+                break
+            q_failed += not compatible(q, s)
+        if q_failed > FAILED_OKAY:
+            continue
+        #compute prior
+        q_prior = perm_prob(q)
+        #compute alpha
+        alpha = min(1, (q_prior / curr_prior) * (fail_penalty(q_failed) / fail_penalty(curr_fails)))
+        #print('alpha',alpha)
+        #accept with probability alpha
+        if np.random.uniform() < alpha:
+            curr = q
+            curr_prior = q_prior
+            curr_fails = q_failed
+        #add one to x
+        if curr_fails >= 1:
+            visits[tuple(curr)] = 0
+        else:
+            if i >= 1500:
+                visits[tuple(curr)] += increment
+    return list(max(visits.items(), key = lambda k: k[1])[0]), curr_fails
+
+def metropolis_hastings():
+    #initialize node
+    curr = permute_values()
+    curr_prior = perm_prob(curr)
+    curr_fails = 0
+    #do some showdowns
+    SHOWDOWN_NUM = 50
+    showdowns = []
+    for i in range(SHOWDOWN_NUM):
+        showdowns = np.random.permutation(showdowns).tolist()
+        showdowns.append(create_board())
+        #visits = collections.defaultdict(int)
+        #best_guess, visits, curr, curr_prior, curr_fails = mh_showdown(showdowns,visits,curr,curr_prior,curr_fails)
+        curr, curr_fails = mh_showdown(showdowns,curr,curr_fails)
+        #best_guess, visits, curr, curr_prior, curr_fails = mh_showdown(showdowns,visits,best_guess,perm_prob(best_guess),curr_fails)
+        print("best guess:", curr, curr_fails)
+
+#bob = create_board()
+#print(bob)
+#print(compatible(list(range(13)),bob))
+
+print(actual_perm)
+metropolis_hastings()
+
+
+'''
+def old_permutation_deducer():
 
     #define constants/external variables
     NUM_INITIALS = 100000
@@ -241,13 +333,10 @@ def permutation_deducer():
             perms = regenerate(perms,s_board)
         print("shows",num_showdowns)
     return perms
+'''
 
-
-
+'''
 def threshold(s):
-    '''
-    number of permutations before we start regenerating.
-    '''
     if s == 1:
         return 1000
     if s == 2:
@@ -278,52 +367,5 @@ def swap_dist(p, q):
     q = invert_q
     not_visited = [True] * len(q)
     cycles = 0
-    for i in range(len(q)):
-        curr_pos = i
-        if not_visited[curr_pos]:
-            cycles += 1
-        while not_visited[curr_pos]:
-            not_visited[curr_pos] = False
-            curr_pos = q[curr_pos]
-    return len(q) - cycles
-
-#print(swap_dist([0,1,2,3,4,5,6],[1,2,0,3,4,5,6]))
-#print(lcs_dist([0,1,2,3,4,5,6],[1,2,0,3,4,5,6]))
-
+    compatible(permute_values(),random_board)
 '''
-for p in perms:
-    correct = []
-    for i in range(len(p)):
-        if p[i] == actual_perm[i]:
-            correct.append(1)
-        else:
-            correct.append(0)
-    print(correct,sum(correct))
-'''
-perms = permutation_deducer()
-print(actual_perm)
-#print([ranks[x] for x in actual_perm])
-
-swap_total = 0
-reinsert_total = 0
-swap_min = 13
-reinsert_min = 13
-for p in perms:
-    swap = swap_dist(p, actual_perm)
-    swap_total += swap
-    if swap < swap_min:
-        swap_min = swap
-    rein = lcs_dist(p, actual_perm)
-    reinsert_total += rein
-    if rein < reinsert_min:
-        reinsert_min = rein
-    print("Swap distance:", swap) 
-    print("Reinsertion distance:", rein)
-print("swap_average", swap_total/len(perms))
-print("reinsert_average", reinsert_total/len(perms))
-print("swap_min", swap_min)
-print("reinsert_min", reinsert_min)
-print(actual_perm)
-
-#random_board = create_board()
-#print(compatible(permute_values(),random_board))
