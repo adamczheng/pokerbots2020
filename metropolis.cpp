@@ -1,3 +1,7 @@
+/*
+g++ metropolis.cpp -O3 -o metropolis && ./metropolis
+*/
+
 #include <bits/stdc++.h>
 using namespace std;
 
