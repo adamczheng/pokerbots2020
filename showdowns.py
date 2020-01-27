@@ -87,6 +87,33 @@ def create_board():
     board_cards = [gen_card(), gen_card(), gen_card(), gen_card(), gen_card()]
     return a, b, board_cards
 
+ranks_rev = {r: i for i, r in enumerate(ranks)}
+
+def translate_card(perm, card):
+    i = ranks_rev[card[0]]
+    permuted_i = perm[i]
+    permuted_v = ranks[permuted_i]
+    return eval7.Card(permuted_v + card[1])
+
+def hand_type(value):
+    if value <= 834199:
+        return 0
+    if value <= 17611408:
+        return 1
+    if value <= 34388480:
+        return 2
+    if value <= 51165696:
+        return 3
+    if value <= 67895296: #straight
+        return 4
+    if value <= 84720279:
+        return 5
+    if value <= 101494784:
+        return 6
+    if value <= 118272000:
+        return 7
+    return 8
+
 def showdown(p,board_state):
     '''
     Computes a showdown between two players, assessed using p as the desired permutation.
@@ -96,14 +123,14 @@ def showdown(p,board_state):
      0: a = b
     -1: a > b
     '''
-    proposed_dict = pdict(p)
+    #proposed_dict = pdict(p)
     #pa = [perm_dict[x] for x in a]
     #pb = [perm_dict[x] for x in b]
     #pboard = [perm_dict[x] for x in board]
     a, b, board = board_state
-    pa = [proposed_dict[x] for x in a]
-    pb = [proposed_dict[x] for x in b]
-    pboard = [proposed_dict[x] for x in board]
+    pa = [translate_card(p, x) for x in a]
+    pb = [translate_card(p, x) for x in b]
+    pboard = [translate_card(p, x) for x in board]
 
     a_val = eval7.evaluate(pa+pboard)
     b_val = eval7.evaluate(pb+pboard)
@@ -112,11 +139,15 @@ def showdown(p,board_state):
         #print(a)
         #print("beats")
         #print(b)
+        if a_val == 4:
+            return 2
         return 1
     elif a_val < b_val:
         #print(b)
         #print("beats")
         #print(a)
+        if b_val == 4:
+            return -2
         return -1
     else:
         #print(a)
@@ -129,7 +160,14 @@ def compatible(p, board_state):
     tests compatibility of permutation with the showdown result on the board.
     '''
     #p is permutation, s is showdown
-    return showdown(p, board_state) == showdown(actual_perm, board_state)
+    a = showdown(p, board_state)
+    b = showdown(actual_perm, board_state)
+    if a == b and (a == 2 or b == 2):
+        return 2
+    if a == b:
+        return 1
+    return 0
+    #return showdown(p, board_state) == showdown(actual_perm, board_state)
 
 def new_candidate(p, fails):
     '''
@@ -167,9 +205,11 @@ def new_candidate(p):
     return p
 '''
 
-def fail_penalty(fails):
-    #return 1
-    return 0.05 ** fails
+def fail_penalty(fails, straightcnt):
+    if fails > 0:
+        return 10**-9
+    return 1
+    #return (0.05 ** fails) * (0.95 ** straightcnt)
 
 def mh_showdown(showdowns,curr,increment=1):
     '''
@@ -182,62 +222,90 @@ def mh_showdown(showdowns,curr,increment=1):
     visits = collections.defaultdict(int)
     curr_prior = perm_prob(curr)
     #for iterations
-    NUM_ITERATIONS = 10000
+    NUM_ITERATIONS = 1000
     #FAILED_OKAY = 10
 
     curr_fails = 0
+    curr_straightcnt = 0
     #update fails
     for s in showdowns:
-        curr_fails += not compatible(curr, s)
+        cc = compatible(curr, s)
+        curr_fails += (cc == 0)
+        curr_straightcnt += (cc == 2)
+        #curr_fails += not compatible(curr, s)
     #alphas = {}
+    alphatot = 0
+    priortot = 0
+    alphacnt = 0
     for i in range(NUM_ITERATIONS):
         #propose new candidate
         q = new_candidate(curr, curr_fails)
         #compute showdown ratio
         q_failed = 0
+        straightcnt = 0
         for s in showdowns:
             #if q_failed > FAILED_OKAY:
             #    break
-            q_failed += not compatible(q, s)
-        showdown_ratio = fail_penalty(q_failed) / fail_penalty(curr_fails)
+            cc = compatible(q, s)
+            q_failed += (cc == 0)
+            straightcnt += (cc == 2)
+        showdown_ratio = fail_penalty(q_failed, straightcnt) / fail_penalty(curr_fails, curr_straightcnt)
+
         #compute prior ratio
         q_prior = perm_prob(q)
         prior_ratio = q_prior / curr_prior
+        priortot += prior_ratio
         #compute alpha
         alpha = prior_ratio * showdown_ratio
+        
+        alphatot += min(1, alpha)
+        alphacnt += 1
         #alpha = (q_prior / curr_prior) * (fail_penalty(q_failed) / fail_penalty(curr_fails))
         bob = np.random.uniform()
         if bob < alpha:
             curr = q
             curr_prior = q_prior
             curr_fails = q_failed
-        if i >= 3000:
+        if i >= 250:
             visits[tuple(curr)] += increment
+    print(alphatot / alphacnt)
+    print(priortot / alphacnt)
+    print(max(visits.items(), key = lambda k : k[1]))
     return list(max(visits.items(), key = lambda k: k[1])[0]), curr_fails
 
 def metropolis_hastings():
     #initialize node
-    curr = list(range(13))
-    curr_prior = perm_prob(curr)
-    curr_fails = 0
+    curr = [list(range(13)) for i in range(100)]
+    #curr = list(range(13))
+
+    curr_prior = [perm_prob(curr[i]) for i in range(100)]
+    curr_fails = [0 for i in range(100)]
     #do some showdowns
     SHOWDOWN_NUM = 80
     showdowns = []
-    for i in range(SHOWDOWN_NUM//2):
+    for i in range(SHOWDOWN_NUM):
         showdowns.append(create_board())
-    for i in range(SHOWDOWN_NUM//2,SHOWDOWN_NUM):
-        showdowns.append(create_board())
-        curr, curr_fails = mh_showdown(showdowns,curr)
-        print("showdown:", i)
-        print("best guess:", curr, curr_fails)
-        if curr_fails > 4:
-            break
+        for j in range(1):
+            curr[j], curr_fails[j] = mh_showdown(showdowns,curr[j])
+            print("showdown:", i)
+            print("best guess:", curr[j], curr_fails[j])
+            #if curr_fails > 4:
+            #    break
 
 #bob = create_board()
 #print(bob)
 #print(compatible(list(range(13)),bob))
 
 print(actual_perm)
+
+#for i in range(10000):
+    #a, b, board = create_board()
+    #proposed_dict = pdict(actual_perm)
+    #pa = [actual_dict[x] for x in a]
+    #pb = [actual_dict[x] for x in b]
+    #pboard = [actual_dict[x] for x in board]
+    #eval7.evaluate(pa+pboard)
+    #eval7.evaluate(pb+pboard)
 metropolis_hastings()
 
 #bruh what
