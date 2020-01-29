@@ -1,5 +1,8 @@
 # pokerbots2020
 
+CFR code at
+https://github.com/adamczheng/CFR
+
 # Included in repository
 ### Pokerbots 2020 engine and skeleton code
 from https://github.com/mitpokerbots/engine-2020
