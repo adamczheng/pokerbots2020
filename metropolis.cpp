@@ -6,7 +6,7 @@ g++ metropolis.cpp -std=c++11 -O3 -o metropolis && ./metropolis
 using namespace std;
 
 int TOT_ITERS = 5000;
-double REJECTION_PROB = 0.07;
+double REJECTION_PROB = 0.05;
 int bob = 0;
 
 int HR[32487834];
@@ -205,8 +205,8 @@ void metropolis_hastings(vector<int> &guess) {
     //0.10: 79.08 [M ___] (7500), 79.32 [M ___] (5000)
     //reinsertion
     //0.10: 83.84 [M 196] (7500)
-    //0.07: 79.48 [M 176] (7500), 76.51 [M 148] (5000)
-    //0.05: 81.44 [M 232] (7500), 80.42 [M 156] (5000)
+    //0.07: 79.48 [M 176] (7500), 78.10 [M 214] (5000)
+    //0.05: 81.44 [M 232] (7500), 80.65 [M 231] (5000)
     map<long long, int> visits;
     for (int iter = 0; iter < TOT_ITERS; iter++) {
         //cout << iter << endl;

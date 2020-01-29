@@ -358,14 +358,20 @@ def lcs_dist(text1, text2):
             else:
                 dp[i+1][j+1]=max(dp[i][j+1],dp[i+1][j])
     return len(text1) - dp[-1][-1]
-
 def swap_dist(p, q):
-    print("p:", p)
-    print("actual:", q)
-    inverse_p = [p.index(i) for i in range(len(p))]
-    invert_q = [q[inverse_p[i]] for i in range(len(q))]
-    q = invert_q
-    not_visited = [True] * len(q)
-    cycles = 0
-    compatible(permute_values(),random_board)
+     print("p:", p)
+     print("actual:", q)
+     inverse_p = [p.index(i) for i in range(len(p))]
+     invert_q = [q[inverse_p[i]] for i in range(len(q))]
+     q = invert_q
+     not_visited = [True] * len(q)
+     cycles = 0
+     for i in range(len(q)):
+         curr_pos = i
+         if not_visited[curr_pos]:
+             cycles += 1
+         while not_visited[curr_pos]:
+             not_visited[curr_pos] = False
+             curr_pos = q[curr_pos]
+     return len(q) - cycles
 '''
