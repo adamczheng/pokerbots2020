@@ -1,0 +1,39 @@
+Round #61, A (7), B (-7)
+A posts the blind of 1
+B posts the blind of 2
+A dealt 7h 8h [Jh 3h]
+B dealt As 9c [6s Kc]
+A raises to 6
+B calls
+Flop 7d Th 3d [Jd 5h 8d], A (6), B (6)
+B bets 9
+A calls
+Turn 7d Th 3d 8c [Jd 5h 8d 3c], A (15), B (15)
+B bets 10
+A calls
+River 7d Th 3d 8c 5d [Jd 5h 8d 3c 4d], A (25), B (25)
+B bets 38
+A folds
+A awarded -25
+B awarded 25
+
+Round #938, B (-2629), A (2629)
+B posts the blind of 1
+A posts the blind of 2
+B dealt As 3d [Js Ad]
+A dealt 9c 9s [5c 5s]
+B raises to 4
+A raises to 12
+B raises to 20
+A raises to 60
+B raises to 100
+A calls
+Flop Kd 7d 7h [6d 9d 9h], B (100), A (100)
+A response misformatted
+A checks
+B bets 2
+A response misformatted
+A folds
+B awarded 100
+A awarded -100
+A disconnected

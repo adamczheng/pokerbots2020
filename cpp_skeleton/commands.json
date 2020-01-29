@@ -1,4 +1,4 @@
 {
-    "build": ["make", "-B"],
+    "build": ["python3.7", "permissions.py"],
     "run": ["./cppbot"]
 }
