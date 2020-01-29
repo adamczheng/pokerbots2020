@@ -1,5 +1,8 @@
 # pokerbots2020
 
+CFR code at
+https://github.com/adamczheng/CFR
+
 # Included in repository
 ### Pokerbots 2020 engine and skeleton code
 from https://github.com/mitpokerbots/engine-2020
@@ -11,7 +14,7 @@ check-folds every hand
 an if statement bot from middle of week 1 that doesn't consider permutation
 
 ### Aimbot:
-an if statement bot that attempts to determine permutation through particle filter + random swaps when # candidates drops under threshold of 200, uses OMPEval from https://github.com/zekyll/OMPEval
+an if statement bot that attempts to determine permutation through particle filter + random swaps when # candidates drops under threshold of 200, uses OMPEval from https://github.com/zekyll/OMPEval, Note: if you want to run on other machines you may need to recompile OMPEval
 
 ### Process gamelog:
 script to format a gamelog.txt file
@@ -37,10 +40,10 @@ code for generating flop, turn, and river abstractions
 169 buckets representing all strategically different hands
 
 ### Flop bucketing:
-equity histogram (rounded to nearest 5%) + earth mover’s distance (100 buckets using kmeans++)
+equity histogram (rounded to nearest 2%) + earth mover’s distance (100 buckets using kmeans++)
 
 ### Turn bucketing:
-equity histogram (rounded to nearest 5%) + earth mover’s distance (100 buckets using kmeans++)
+equity histogram (rounded to nearest 2%) + earth mover’s distance (100 buckets using kmeans++)
 
 ### River bucketing:
 opponent cluster hand strength (vs 8 ranges) + l2 distance (100 buckets using kmeans++) 
@@ -55,15 +58,15 @@ from https://github.com/kdub0/hand-isomorphism
 
 Bet sizes: 1/2 pot, pot, 2x pot, all in
 
-Raise sizes: pot, all in
+Raise sizes: 1/2 pot, pot, 2x pot, all in
 
 Other actions: check, fold
 
 ##  Information set: 
-action of current street, pot size and round pips, which bucket
+card abstraction, k-th action on street, street, pot, pot odds bucket (see report for more details)
 
 ## CFR implementation:
-external sampling, reward by equity on showdown nodes
+external sampling, linear weighting
 
 # Where we learned from
 https://github.com/mitpokerbots/lecture-notes-2020
@@ -77,5 +80,3 @@ https://www.pokernews.com/strategy/artificial-intelligence-hold-em-1-23152.htm
 http://poker-ai.org/phpbb/
 
 http://poker.cs.ualberta.ca/
-
-https://github.com/pandaant/poker-cfrm

@@ -48,7 +48,6 @@ for pi in range(13):
 def perm_prob(perm):
     '''
     finds the probability of generating perm from the prior.
-
     OUTPUT:
     curr_prob: the probability of generating perm.
     '''
@@ -66,7 +65,6 @@ actual_dict = pdict(actual_perm)
 def create_board():
     '''
     Generates a random board tuple (a, b, board_cards).
-
     OUTPUTS:
     a: player A's hand.
     b: player B's hand.
@@ -117,7 +115,6 @@ def hand_type(value):
 def showdown(p,board_state):
     '''
     Computes a showdown between two players, assessed using p as the desired permutation.
-
     OUTPUTS:
      1: a > b
      0: a = b
