@@ -14,7 +14,7 @@ check-folds every hand
 an if statement bot from middle of week 1 that doesn't consider permutation
 
 ### Aimbot:
-an if statement bot that attempts to determine permutation through particle filter + random swaps when # candidates drops under threshold of 200, uses OMPEval from https://github.com/zekyll/OMPEval
+an if statement bot that attempts to determine permutation through particle filter + random swaps when # candidates drops under threshold of 200, uses OMPEval from https://github.com/zekyll/OMPEval, Note: if you want to run on other machines you may need to recompile OMPEval
 
 ### Process gamelog:
 script to format a gamelog.txt file
