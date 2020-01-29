@@ -1,9 +1,13 @@
 /*
-g++ metropolis.cpp -O3 -o metropolis && ./metropolis
+g++ metropolis.cpp -std=c++11 -O3 -o metropolis && ./metropolis
 */
 
 #include <bits/stdc++.h>
 using namespace std;
+
+int TOT_ITERS = 5000;
+double REJECTION_PROB = 0.07;
+int bob = 0;
 
 int HR[32487834];
 int GetHandValue(array<int, 7> cards) {
@@ -99,7 +103,22 @@ vector<int> gen_candidate(const vector<int> &guess) {
     }
     uniform_int_distribution<int> distribution(0, 12);
     int x = distribution(rng), y = distribution(rng);
-    swap(res[x], res[y]);
+    if (bob == 1){
+        swap(res[x], res[y]);
+    }
+    else{
+        res[y] = guess[x];
+        if (x > y){
+            for (int k = y+1; k <= x; ++k){
+                res[k] = guess[k-1];
+            }
+        }
+        if (x < y){
+            for (int k = x; k < y; ++k){
+                res[k] = guess[k+1];
+            }
+        }
+    }
     return res;
 }
 
@@ -174,8 +193,20 @@ int count_fails(const vector<int> &guess) {
 int guess_fails = 0;
 void metropolis_hastings(vector<int> &guess) {
     guess_fails = count_fails(guess);
-    int TOT_ITERS = 1000;
-    double REJECTION_PROB = 0.2;
+    //int TOT_ITERS = 7500;
+    //cout << "Total iterations:" << TOT_ITERS << endl;
+    //double REJECTION_PROB = 0.07;
+    //cout << "Rejection prob:" << REJECTION_PROB << endl;
+    //RESULTS:
+    //swap
+    //0.05: 81.27 [M ___] (7500), 80.55 [M ___] (5000)
+    //0.07: 81.09 [M 197] (7500), 79.95 [M 150] (5000)
+    //.075: 81.57 [M ___] (7500), 80.05 [M ___] (5000)
+    //0.10: 79.08 [M ___] (7500), 79.32 [M ___] (5000)
+    //reinsertion
+    //0.10: 83.84 [M 196] (7500)
+    //0.07: 79.48 [M 176] (7500), 76.51 [M 148] (5000)
+    //0.05: 81.44 [M 232] (7500), 80.42 [M 156] (5000)
     map<long long, int> visits;
     for (int iter = 0; iter < TOT_ITERS; iter++) {
         //cout << iter << endl;
@@ -205,6 +236,14 @@ void metropolis_hastings(vector<int> &guess) {
 
 int main() {
 
+    cout << "Total iterations:" << TOT_ITERS << endl;
+    cout << "Rejection prob:" << REJECTION_PROB << endl;
+    if (bob == 1){
+        cout << "Candidates by swap" << endl;
+    }
+    else{
+        cout << "Candidates by reinsertion" << endl;
+    }
     memset(HR, 0, sizeof(HR));
     FILE* hrfin = fopen("handranks.dat", "rb");
     fread(HR, sizeof(HR), 1, hrfin);
@@ -213,7 +252,7 @@ int main() {
     int running_tot = 0;
     int running_max = 0;
     compute_prior_probs();
-    for (int asdf = 0; asdf < 1000; asdf++) {
+    for (int asdf = 0; asdf < 100; asdf++) {
     actual_perm = permute_values();
     for (int i = 0; i < 13; i++) {
         //cout << actual_perm[i] << ' ';
