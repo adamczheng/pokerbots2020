@@ -28,7 +28,7 @@ For playing, before 5 showdowns, we assume the permutation is 23456789TJQKA, but
 
 Against check-call bot, we determine the permutation about 30% of the time with our week 1 strategy, although we get a good idea of the permutation much more often. It sometimes takes too long (if we never generate the right permutation) so we don't allow this part of the program to exceed 20-25 seconds.
 
-Currently, we're trying to implement Metropolis Hasting to see if it yields better results.
+Currently, we're trying to implement Metropolis Hasting to see if it yields better results. Update: we implemented it and it did yield better results (at least in speed of determining permutation)
 
 # Abstractions
 ## Card abstractions:
@@ -51,9 +51,6 @@ opponent cluster hand strength (vs 8 ranges) + l2 distance (100 buckets using km
 ### Imperfect recall scheme:
 forget everything from the previous street
 
-### Kevin Waugh isomorphisms for data encoding
-from https://github.com/kdub0/hand-isomorphism
-
 ## Planned action abstractions:
 
 Bet sizes: 1/2 pot, pot, 2x pot, all in
@@ -68,7 +65,7 @@ card abstraction, k-th action on street, street, pot, pot odds bucket (see repor
 ## CFR implementation:
 external sampling, linear weighting
 
-# Where we learned from
+# Useful links
 https://github.com/mitpokerbots/lecture-notes-2020
 
 http://modelai.gettysburg.edu/2013/cfr/
@@ -80,3 +77,7 @@ https://www.pokernews.com/strategy/artificial-intelligence-hold-em-1-23152.htm
 http://poker-ai.org/phpbb/
 
 http://poker.cs.ualberta.ca/
+
+http://www.ganzfriedresearch.com/
+
+https://www.cs.cmu.edu/~noamb/
